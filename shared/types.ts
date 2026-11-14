@@ -77,6 +77,12 @@ export interface QuickCheckResult {
   whyItMatters: string;
   safeAlternativeOrTiming: string;
   modelUsed: string;
+  /** Exact sentence from the FDA label this verdict is based on (empty if none). */
+  sourceQuote?: string;
+  /** Which medication's FDA label the quote came from. */
+  sourceDrug?: string;
+  /** True only if the server confirmed the quote appears word-for-word in the label. */
+  labelVerified?: boolean;
 }
 
 export interface ScanPrescriptionResult {
