@@ -22,9 +22,14 @@ function getCandidateBases(): string[] {
   if (envUrl) {
     return [envUrl.replace(/\/$/, '')];
   }
-  // Primary: same-origin Vite `/api` proxy -> http://localhost:4000
-  // Backup: direct localhost:4000 (e.g. if running `vite preview` without dev proxy)
-  return ['', 'http://localhost:4000'];
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1')
+  ) {
+    return ['', 'http://localhost:4000'];
+  }
+  return [''];
 }
 
 export function isLiveGeminiModel(modelUsed?: string): boolean {

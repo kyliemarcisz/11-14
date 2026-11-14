@@ -248,10 +248,12 @@ app.post('/api/audio/speak', async (req: Request, res: Response) => {
   }
 });
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(
-    `⚓ HarborDose API listening on http://localhost:${port} | Model: ${GEMINI_MODEL} | Gemini Key Configured: ${isGeminiConfigured()}`
-  );
-});
+if (!process.env.VERCEL) {
+  app.listen(port, '0.0.0.0', () => {
+    console.log(
+      `⚓ HarborDose API listening on http://localhost:${port} | Model: ${GEMINI_MODEL} | Gemini Key Configured: ${isGeminiConfigured()}`
+    );
+  });
+}
 
 export default app;
