@@ -8,11 +8,11 @@ import {
   RefreshCw,
   Sparkles,
   Square,
+  Video,
   Volume2,
   X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { PillIllustration } from '../components/PillIllustration';
 import {
   isLiveGeminiModel,
@@ -37,6 +37,20 @@ const DEMO_LABELS = [
   },
 ];
 
+function isVirtualOrContinuityLabel(label: string): boolean {
+  return /iphone|ipad|continuity|desk view|obs|virtual|mmhmm|camo|epoccam/i.test(
+    label
+  );
+}
+
+function isPreferredBuiltInDesktopCamera(label: string): boolean {
+  return (
+    /facetime|built-in|integrated|internal|macbook|imac|webcam|usb/i.test(
+      label
+    ) && !isVirtualOrContinuityLabel(label)
+  );
+}
+
 export const AddPillView: React.FC = () => {
   const activeProfile = useActiveProfile();
   const addMedicationToProfile = useHarborStore(
@@ -48,13 +62,14 @@ export const AddPillView: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const [cameraStarting, setCameraStarting] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [activeCameraLabel, setActiveCameraLabel] = useState<string>('');
 
   const [manualOpen, setManualOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -86,56 +101,65 @@ export const AddPillView: React.FC = () => {
     };
   }, [stopCameraStream]);
 
-  // Attach activeStream to <video> reliably across Chrome, Safari, and mobile browsers
-  const bindStreamToVideo = useCallback(
-    (node: HTMLVideoElement | null, stream: MediaStream | null) => {
-      if (!node || !stream) return;
-      if (node.srcObject !== stream) {
-        node.srcObject = stream;
-      }
-      node.muted = true;
-      node.playsInline = true;
-      node.setAttribute('playsinline', 'true');
-      node.setAttribute('autoplay', 'true');
-
-      const playPromise = node.play();
-      if (playPromise && typeof playPromise.then === 'function') {
-        playPromise
-          .then(() => {
-            if (node.videoWidth > 0) {
-              setVideoReady(true);
-              setCameraStarting(false);
-            }
-          })
-          .catch(() => {
-            // Autoplay will retry on loadedmetadata
-          });
-      }
-    },
-    []
-  );
-
-  const setVideoNode = useCallback(
-    (node: HTMLVideoElement | null) => {
-      videoRef.current = node;
-      if (node && activeStream) {
-        bindStreamToVideo(node, activeStream);
-      }
-    },
-    [activeStream, bindStreamToVideo]
-  );
-
+  // Stable <video> binding: never recreates ref callbacks, never detaches <video>, and polls readiness
   useEffect(() => {
-    if (cameraModalOpen && videoRef.current && activeStream) {
-      bindStreamToVideo(videoRef.current, activeStream);
+    const video = videoRef.current;
+    if (!cameraOpen || !video || !activeStream) return;
+
+    if (video.srcObject !== activeStream) {
+      video.srcObject = activeStream;
     }
-  }, [cameraModalOpen, activeStream, bindStreamToVideo]);
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('muted', '');
+
+    const tryPlay = () => {
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          // Will retry on next readiness tick
+        });
+      }
+    };
+    tryPlay();
+
+    const timer = window.setInterval(() => {
+      if (video.paused && activeStream.active) {
+        tryPlay();
+      }
+      if (video.videoWidth > 0 && video.readyState >= 2) {
+        setVideoReady(true);
+        setCameraStarting(false);
+      }
+    }, 150);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [cameraOpen, activeStream]);
 
   const startCameraStream = useCallback(
-    async (preferredDeviceId?: string) => {
+    async (explicitDeviceId?: string) => {
       setCameraError(null);
       setVideoReady(false);
       setCameraStarting(true);
+
+      // 1. Check secure context / browser support
+      if (
+        typeof window !== 'undefined' &&
+        !window.isSecureContext &&
+        window.location.hostname !== 'localhost' &&
+        window.location.hostname !== '127.0.0.1'
+      ) {
+        setCameraStarting(false);
+        setCameraError(
+          `Browsers block live camera on non-HTTPS network addresses (${window.location.origin}). Open http://localhost:8081 in your browser, or click "Upload Photo" to pick an image.`
+        );
+        return;
+      }
 
       if (
         typeof navigator === 'undefined' ||
@@ -144,11 +168,12 @@ export const AddPillView: React.FC = () => {
       ) {
         setCameraStarting(false);
         setCameraError(
-          'Live webcam requires http://localhost:8081 (or HTTPS). Please open http://localhost:8081 or choose a photo file below.'
+          'Your current browser view does not support live webcam access. Open http://localhost:8081 directly in Chrome or Safari, or use "Upload Photo".'
         );
         return;
       }
 
+      // Stop any existing camera tracks first
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
@@ -158,78 +183,154 @@ export const AddPillView: React.FC = () => {
         navigator.userAgent || ''
       );
 
-      // On laptops/desktops, avoid `facingMode: 'environment'` first so macOS doesn't stall trying to wake a locked Continuity Camera
-      const primaryConstraints: MediaStreamConstraints = preferredDeviceId
-        ? {
-            video: {
-              deviceId: { exact: preferredDeviceId },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-            audio: false,
+      try {
+        let targetDeviceId = explicitDeviceId;
+
+        // If permission was already granted previously, pick the built-in MacBook FaceTime camera right away
+        if (!targetDeviceId && !isMobile) {
+          try {
+            const preDevices = await navigator.mediaDevices.enumerateDevices();
+            const preCams = preDevices.filter(
+              (d) => d.kind === 'videoinput' && d.label
+            );
+            const builtIn = preCams.find((d) =>
+              isPreferredBuiltInDesktopCamera(d.label)
+            );
+            if (builtIn?.deviceId) {
+              targetDeviceId = builtIn.deviceId;
+            }
+          } catch {
+            // Ignore pre-enumeration failure
           }
-        : isMobile
-          ? {
+        }
+
+        const buildConstraints = (devId?: string): MediaStreamConstraints => {
+          if (devId) {
+            return {
+              video: {
+                deviceId: { exact: devId },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+              audio: false,
+            };
+          }
+          if (isMobile) {
+            return {
               video: {
                 facingMode: { ideal: 'environment' },
                 width: { ideal: 1280 },
                 height: { ideal: 720 },
               },
               audio: false,
-            }
-          : {
-              video: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-              },
-              audio: false,
             };
+          }
+          return {
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+            audio: false,
+          };
+        };
 
-      try {
         let stream: MediaStream;
         try {
-          stream = await navigator.mediaDevices.getUserMedia(primaryConstraints);
+          stream = await navigator.mediaDevices.getUserMedia(
+            buildConstraints(targetDeviceId)
+          );
         } catch {
-          // Universal fallback to any available camera
+          // Universal fallback to basic `{ video: true }`
           stream = await navigator.mediaDevices.getUserMedia({
             video: true,
             audio: false,
           });
         }
 
-        streamRef.current = stream;
-        setActiveStream(stream);
-
-        const activeTrack = stream.getVideoTracks()[0];
-        const currentDeviceId = activeTrack?.getSettings?.().deviceId || '';
-        if (currentDeviceId) {
-          setSelectedDeviceId(currentDeviceId);
-        }
-
+        // Now that permission is unlocked, enumerate all cameras with full labels
+        let cams: MediaDeviceInfo[] = [];
         try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const cams = devices.filter((d) => d.kind === 'videoinput');
+          const allDevices = await navigator.mediaDevices.enumerateDevices();
+          cams = allDevices.filter((d) => d.kind === 'videoinput');
           setVideoDevices(cams);
-          if (!currentDeviceId && cams[0]?.deviceId) {
-            setSelectedDeviceId(cams[0].deviceId);
-          }
         } catch {
-          // Device enumeration optional
+          // Ignore enumeration error
         }
+
+        let firstTrack = stream.getVideoTracks()[0];
+        let trackLabel = firstTrack?.label || '';
+
+        // Crucial macOS fix: if user didn't explicitly pick a camera and macOS auto-routed to a sleeping iPhone Continuity Camera / virtual camera while FaceTime HD Camera exists, switch immediately to FaceTime HD Camera!
+        if (
+          !explicitDeviceId &&
+          !isMobile &&
+          isVirtualOrContinuityLabel(trackLabel)
+        ) {
+          const builtInCam = cams.find((c) =>
+            isPreferredBuiltInDesktopCamera(c.label)
+          );
+          if (builtInCam?.deviceId) {
+            try {
+              const builtInStream = await navigator.mediaDevices.getUserMedia(
+                buildConstraints(builtInCam.deviceId)
+              );
+              stream.getTracks().forEach((t) => t.stop());
+              stream = builtInStream;
+              firstTrack = stream.getVideoTracks()[0];
+              trackLabel = firstTrack?.label || builtInCam.label;
+            } catch {
+              // Keep initial stream if switch fails
+            }
+          }
+        }
+
+        const activeDevId =
+          firstTrack?.getSettings?.().deviceId ||
+          explicitDeviceId ||
+          cams[0]?.deviceId ||
+          '';
+
+        streamRef.current = stream;
+        setSelectedDeviceId(activeDevId);
+        setActiveCameraLabel(trackLabel || 'Live Camera');
+        setActiveStream(stream);
+        setCameraStarting(false);
       } catch (err) {
         setCameraStarting(false);
-        const errName = err instanceof Error ? err.name : '';
-        if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        const errName = err instanceof Error ? err.name : 'CameraError';
+        const errMsg = err instanceof Error ? err.message : '';
+        const inIframe =
+          typeof window !== 'undefined' && window.self !== window.top;
+
+        if (inIframe) {
           setCameraError(
-            'Camera access was blocked by your browser. Click the camera/lock icon in your address bar to allow camera access, or upload a photo below.'
+            'Embedded preview panels block webcam hardware. Open http://localhost:8081 directly in Chrome or Safari to use your live camera, or click "Upload Photo".'
           );
-        } else if (errName === 'NotFoundError') {
+        } else if (
+          errName === 'NotAllowedError' ||
+          errName === 'PermissionDeniedError' ||
+          errName === 'SecurityError'
+        ) {
           setCameraError(
-            'No webcam was detected on this device. You can upload a prescription photo file instead.'
+            'Camera permission is blocked. Click the Camera / Tune icon in your browser address bar to Allow camera access (and check macOS System Settings → Privacy & Security → Camera).'
+          );
+        } else if (
+          errName === 'NotFoundError' ||
+          errName === 'DevicesNotFoundError'
+        ) {
+          setCameraError(
+            'No camera was found on this device. Please use "Upload Photo" to select an image.'
+          );
+        } else if (
+          errName === 'NotReadableError' ||
+          errName === 'TrackStartError'
+        ) {
+          setCameraError(
+            `Your camera is currently busy or locked by another app (${errMsg || errName}). Close other video apps or select another camera.`
           );
         } else {
           setCameraError(
-            'Could not start the camera right now (it may be in use by another app). Try switching cameras or uploading a photo.'
+            `Could not open camera (${errName}${errMsg ? `: ${errMsg}` : ''}). Try opening http://localhost:8081 in Chrome/Safari or click "Upload Photo".`
           );
         }
       }
@@ -239,7 +340,12 @@ export const AddPillView: React.FC = () => {
 
   const handleOpenWebcam = async () => {
     triggerGentleFeedback();
-    setCameraModalOpen(true);
+    if (cameraOpen) {
+      stopCameraStream();
+      setCameraOpen(false);
+      return;
+    }
+    setCameraOpen(true);
     await startCameraStream();
   };
 
@@ -297,9 +403,9 @@ export const AddPillView: React.FC = () => {
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, width, height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
     stopCameraStream();
-    setCameraModalOpen(false);
+    setCameraOpen(false);
     setPreviewUrl(dataUrl);
 
     await runGeminiScan({
@@ -314,7 +420,7 @@ export const AddPillView: React.FC = () => {
     if (!file) return;
 
     stopCameraStream();
-    setCameraModalOpen(false);
+    setCameraOpen(false);
 
     try {
       const jpegDataUrl = await normalizeImageFileToJpegDataUrl(file);
@@ -347,249 +453,6 @@ export const AddPillView: React.FC = () => {
     setSavedBanner(true);
   };
 
-  const closeCameraModal = () => {
-    stopCameraStream();
-    setCameraModalOpen(false);
-  };
-
-  const cameraModalPortal =
-    cameraModalOpen && typeof document !== 'undefined'
-      ? createPortal(
-          <div
-            className="modal-backdrop"
-            style={{ zIndex: 9999 }}
-            onClick={closeCameraModal}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Scan prescription bottle with camera"
-          >
-            <div
-              className="modal-card"
-              style={{ maxWidth: 560 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '0.6rem',
-                  marginBottom: '0.85rem',
-                }}
-              >
-                <div>
-                  <h3 className="section-title">Scan Prescription Bottle</h3>
-                  <div
-                    style={{
-                      fontSize: '0.8rem',
-                      color: 'var(--text-secondary)',
-                      marginTop: '0.15rem',
-                    }}
-                  >
-                    Hold bottle label or discharge sheet clearly in frame
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="icon-circle-btn"
-                  onClick={closeCameraModal}
-                  aria-label="Close camera"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {videoDevices.length > 1 && !cameraError && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    marginBottom: '0.75rem',
-                  }}
-                >
-                  <select
-                    value={selectedDeviceId}
-                    onChange={(e) => {
-                      const nextId = e.target.value;
-                      setSelectedDeviceId(nextId);
-                      startCameraStream(nextId);
-                    }}
-                    className="harbor-input"
-                    style={{
-                      minHeight: '40px',
-                      fontSize: '0.85rem',
-                      padding: '0 0.75rem',
-                    }}
-                    aria-label="Select camera"
-                  >
-                    {videoDevices.map((cam, i) => (
-                      <option key={cam.deviceId || i} value={cam.deviceId}>
-                        {cam.label || `Camera ${i + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="chip-pill"
-                    onClick={handleSwitchCamera}
-                    style={{ flexShrink: 0 }}
-                  >
-                    <RefreshCw size={14} />
-                    <span>Flip</span>
-                  </button>
-                </div>
-              )}
-
-              {cameraError ? (
-                <div style={{ display: 'grid', gap: '0.85rem' }}>
-                  <div className="alert-card" data-severity="caution">
-                    <div style={{ fontSize: '0.92rem', fontWeight: 600 }}>
-                      {cameraError}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '0.6rem',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => startCameraStream()}
-                    >
-                      <RefreshCw size={18} />
-                      <span>Retry Camera</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <ImagePlus size={18} />
-                      <span>Choose Photo</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      position: 'relative',
-                      borderRadius: '18px',
-                      overflow: 'hidden',
-                      background: '#0f172a',
-                      aspectRatio: '4 / 3',
-                      width: '100%',
-                    }}
-                  >
-                    <video
-                      ref={setVideoNode}
-                      autoPlay
-                      playsInline
-                      muted
-                      onLoadedMetadata={(e) => {
-                        const el = e.currentTarget;
-                        el.play().catch(() => {});
-                        if (el.videoWidth > 0) {
-                          setVideoReady(true);
-                          setCameraStarting(false);
-                        }
-                      }}
-                      onCanPlay={(e) => {
-                        if (e.currentTarget.videoWidth > 0) {
-                          setVideoReady(true);
-                          setCameraStarting(false);
-                        }
-                      }}
-                      onPlaying={() => {
-                        setVideoReady(true);
-                        setCameraStarting(false);
-                      }}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        display: 'block',
-                      }}
-                    />
-
-                    {/* Subtle framing corner guide */}
-                    {videoReady && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          inset: '14%',
-                          border: '2px dashed rgba(255, 255, 255, 0.55)',
-                          borderRadius: '16px',
-                          pointerEvents: 'none',
-                        }}
-                      />
-                    )}
-
-                    {(cameraStarting || !videoReady) && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.7rem',
-                          background: 'rgba(15, 23, 42, 0.78)',
-                          color: '#ffffff',
-                          padding: '1.25rem',
-                          textAlign: 'center',
-                        }}
-                      >
-                        <div
-                          className="spinner"
-                          style={{
-                            borderColor: 'rgba(255,255,255,0.25)',
-                            borderTopColor: '#ffffff',
-                          }}
-                        />
-                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                          Starting live camera...
-                        </div>
-                        <div
-                          style={{
-                            fontSize: '0.8rem',
-                            color: 'rgba(255,255,255,0.78)',
-                          }}
-                        >
-                          Click “Allow” if your browser asks for camera
-                          permission.
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    style={{ marginTop: '1rem' }}
-                    disabled={!videoReady}
-                    onClick={handleCaptureWebcamFrame}
-                  >
-                    <Camera size={20} />
-                    <span>
-                      {videoReady
-                        ? 'Capture & Read with Gemini AI'
-                        : 'Waiting for Camera...'}
-                    </span>
-                  </button>
-                </>
-              )}
-            </div>
-          </div>,
-          document.body
-        )
-      : null;
-
   return (
     <section className="page-container">
       <div style={{ marginBottom: '1.15rem' }}>
@@ -601,7 +464,7 @@ export const AddPillView: React.FC = () => {
         </p>
       </div>
 
-      {/* Primary Capture Card */}
+      {/* Primary Capture Card (with Inline Live Camera Viewfinder!) */}
       <div className="harbor-card">
         <div
           style={{
@@ -613,10 +476,15 @@ export const AddPillView: React.FC = () => {
           <button
             type="button"
             className="btn-primary"
+            style={
+              cameraOpen
+                ? { background: 'var(--text-primary)' }
+                : undefined
+            }
             onClick={handleOpenWebcam}
           >
-            <Camera size={20} />
-            <span>Take Photo</span>
+            {cameraOpen ? <X size={20} /> : <Camera size={20} />}
+            <span>{cameraOpen ? 'Close Camera' : 'Take Photo'}</span>
           </button>
 
           <button
@@ -639,6 +507,228 @@ export const AddPillView: React.FC = () => {
             style={{ display: 'none' }}
           />
         </div>
+
+        {/* INLINE LIVE CAMERA VIEWFINDER (No portal/modal clipping, stable ref) */}
+        {cameraOpen && (
+          <div
+            style={{
+              marginTop: '1rem',
+              paddingTop: '1rem',
+              borderTop: '1px solid var(--border)',
+              display: 'grid',
+              gap: '0.75rem',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+              }}
+            >
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  color: activeStream ? 'var(--safe)' : 'var(--text-secondary)',
+                }}
+              >
+                <Video size={16} />
+                <span>
+                  {activeStream
+                    ? `Live: ${activeCameraLabel}`
+                    : cameraStarting
+                      ? 'Requesting camera access...'
+                      : 'Camera unavailable'}
+                </span>
+              </div>
+
+              {videoDevices.length > 1 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <select
+                    value={selectedDeviceId}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      setSelectedDeviceId(nextId);
+                      startCameraStream(nextId);
+                    }}
+                    className="harbor-input"
+                    style={{
+                      minHeight: '36px',
+                      width: 'auto',
+                      fontSize: '0.8rem',
+                      padding: '0 0.6rem',
+                    }}
+                    aria-label="Choose camera device"
+                  >
+                    {videoDevices.map((cam, i) => (
+                      <option key={cam.deviceId || i} value={cam.deviceId}>
+                        {cam.label || `Camera ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="chip-pill"
+                    style={{ minHeight: '36px', padding: '0 0.65rem' }}
+                    onClick={handleSwitchCamera}
+                  >
+                    <RefreshCw size={13} />
+                    <span>Switch</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {cameraError ? (
+              <div style={{ display: 'grid', gap: '0.7rem' }}>
+                <div className="alert-card" data-severity="caution">
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                    {cameraError}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.6rem',
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => startCameraStream()}
+                  >
+                    <RefreshCw size={18} />
+                    <span>Retry Camera</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <ImagePlus size={18} />
+                    <span>Choose Photo File</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    position: 'relative',
+                    width: '100%',
+                    height: 320,
+                    borderRadius: '18px',
+                    overflow: 'hidden',
+                    background: '#0f172a',
+                    border: '1.5px solid var(--border-strong)',
+                  }}
+                >
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    onLoadedMetadata={(e) => {
+                      e.currentTarget.play().catch(() => {});
+                      if (e.currentTarget.videoWidth > 0) {
+                        setVideoReady(true);
+                        setCameraStarting(false);
+                      }
+                    }}
+                    onPlaying={() => {
+                      setVideoReady(true);
+                      setCameraStarting(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+
+                  {/* Subtle dashed framing guide — never obscures the video */}
+                  {activeStream && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: '12%',
+                        border: '2px dashed rgba(255, 255, 255, 0.5)',
+                        borderRadius: '14px',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
+
+                  {/* Only shown BEFORE getUserMedia returns a stream */}
+                  {!activeStream && cameraStarting && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.65rem',
+                        color: '#ffffff',
+                        padding: '1.25rem',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div
+                        className="spinner"
+                        style={{
+                          borderColor: 'rgba(255,255,255,0.25)',
+                          borderTopColor: '#ffffff',
+                        }}
+                      />
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        Waiting for camera permission...
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '0.8rem',
+                          color: 'rgba(255,255,255,0.8)',
+                        }}
+                      >
+                        Click “Allow” in the browser prompt at the top of your
+                        window.
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-primary btn-safe"
+                  disabled={!activeStream && !videoReady}
+                  onClick={handleCaptureWebcamFrame}
+                >
+                  <Camera size={20} />
+                  <span>
+                    {activeStream || videoReady
+                      ? 'Snap Photo & Read with Gemini AI'
+                      : 'Starting Camera...'}
+                  </span>
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Collapsible Text / Sample Drawer */}
         <button
@@ -738,10 +828,10 @@ export const AddPillView: React.FC = () => {
         >
           <img
             src={previewUrl}
-            alt="Prescription preview"
+            alt="Captured prescription"
             style={{
               width: '100%',
-              maxHeight: 220,
+              maxHeight: 240,
               objectFit: 'cover',
               display: 'block',
             }}
@@ -911,8 +1001,6 @@ export const AddPillView: React.FC = () => {
           )}
         </div>
       )}
-
-      {cameraModalPortal}
     </section>
   );
 };
