@@ -8,8 +8,8 @@
 
 - `shared/types.ts` — Shared TypeScript data models (`TimeWindow`, `PillVisual`, `Medication`, `DoseLog`, `PatientProfile`, and Gemini + openFDA API schemas).
 - `server/` — Node.js + Express + TypeScript backend (`@google/genai` + `openfda.ts` official FDA label grounding for safety checks, multimodal prescription bottle/discharge vision parsing, regimen harmony audits, Care Circle SMS generation, and WAV-wrapped empathetic voice readouts).
-- `web/` — Pure React 18 + Vite + TypeScript web application (`http://localhost:8081`) featuring the **Warm Harbor** design system, 3-step personal onboarding + `localStorage` log-out (`harbordose-web-v1`), global **`Aa Large`** Brain-Fog Mode (+25% root typography & `>=64px` touch targets), custom SVG pill illustrations, HTML5 webcam/upload scanner, FDA-verified safety check citations, voice readouts, and 1-click clipboard family SMS updates.
-- `mobile/` — React Native + Expo SDK 52 + Expo Router native mobile app with identical 3-step onboarding + `AsyncStorage` log-out, floating pill-dock bottom navigation, `Aa Large` Brain-Fog Mode, `react-native-svg` pill rendering, `expo-camera` / `expo-image-picker`, `expo-haptics`, FDA-verified safety check citations, `expo-av` / `expo-speech` voice readouts, and `expo-clipboard` family updates.
+- `web/` — Pure React 18 + Vite + TypeScript web application (`http://localhost:8081`) featuring the **Amber Vial** design system (see `.interface-design/system.md`), 3-step personal onboarding + `localStorage` log-out (`harbordose-web-v1`), global **`Aa Large`** Brain-Fog Mode (+25% root typography & `>=64px` touch targets), custom SVG pill illustrations, HTML5 webcam/upload scanner, FDA-verified safety check citations, voice readouts, and 1-click clipboard family SMS updates.
+- `mobile/` — React Native + Expo SDK 52 + Expo Router native mobile app sharing the Amber Vial palette (`src/theme/theme.ts`), with identical 3-step onboarding + `AsyncStorage` log-out, floating pill-dock bottom navigation, `Aa Large` Brain-Fog Mode, `react-native-svg` pill rendering, `expo-camera` / `expo-image-picker`, `expo-haptics`, FDA-verified safety check citations, `expo-av` / `expo-speech` voice readouts, and `expo-clipboard` family updates.
 
 ---
 
@@ -40,7 +40,15 @@ npm run server
 
 # Terminal 2: Start React + Vite Web App (http://localhost:8081)
 npm run web
+```
 
+> **Port 8081 is contested.** Expo's own default port is also 8081, so if a
+> mobile dev server is already running it will hold `localhost` (it binds IPv6
+> `::`, which `localhost` resolves to first) and you will see the *mobile* app
+> in the browser instead of the web app. Either stop Expo, or open the web app
+> at `http://127.0.0.1:8081`, which forces IPv4.
+
+```bash
 # Optional Terminal 3: Start Expo Native Mobile Metro Server (port 8082)
 npm run mobile
 ```

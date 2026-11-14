@@ -1,33 +1,35 @@
 export const HarborPalette = {
-  // Core "Warm Harbor" Palette
-  backgroundPrimary: '#F8F6F2', // Warm Alabaster
-  backgroundSecondary: '#F1EDE4', // Soft Sand
-  surface: '#FFFFFF', // Pure Cream
-  border: '#E6E2D8', // Subtle Warm Border
-  borderStrong: '#D3CDBE',
+  // "Amber Vial" — a pharmacy is lit cold, so the ground is cool and
+  // clinical and the single warm object on screen is the dose you must take.
+  // Kept key-for-key with the web tokens in web/src/styles/harbor.css.
+  backgroundPrimary: '#E6EAE5', // counter — fluorescent light on a pale surface
+  backgroundSecondary: '#DBE1DB', // recessed bands, label stock
+  surface: '#F3F6F2', // card
+  border: 'rgba(26, 38, 48, 0.13)',
+  borderStrong: 'rgba(26, 38, 48, 0.24)',
 
-  textPrimary: '#132238', // Deep Harbor Navy
-  textSecondary: '#5A6B7C', // Muted Slate
-  textMuted: '#7E8E9E',
+  textPrimary: '#1A2630', // label ink
+  textSecondary: '#4E5C66',
+  textMuted: '#7C8990',
 
-  accentPrimary: '#2A7B6F', // Calm Seafoam
-  accentSoft: '#E6F3F0',
-  accentBorder: '#B7DCD5',
+  accentPrimary: '#C06A14', // the amber vial — the one accent
+  accentSoft: '#F7EDE1',
+  accentBorder: '#E3CBA9',
 
-  safe: '#2E6F40', // Sage Green
-  safeSoft: '#EAF5EE',
-  safeBorder: '#B8DEC4',
+  safe: '#1F6B5C', // slack tide — taken, complete
+  safeSoft: '#DEEAE5',
+  safeBorder: '#A9C9BF',
 
-  caution: '#D97706', // Warm Amber
-  cautionSoft: '#FEF5E7',
-  cautionBorder: '#F5D49B',
+  caution: '#96610A', // the auxiliary warning label
+  cautionSoft: '#F6ECD9',
+  cautionBorder: '#E0C899',
 
-  critical: '#C83E3B', // Soft Coral Red
-  criticalSoft: '#FDECEC',
-  criticalBorder: '#F3BABA',
+  critical: '#A13129', // contraindication
+  criticalSoft: '#F7E4E1',
+  criticalBorder: '#E3B4AE',
 
   white: '#FFFFFF',
-  overlay: 'rgba(19, 34, 56, 0.42)',
+  overlay: 'rgba(16, 24, 30, 0.46)',
 } as const;
 
 export interface HarborTheme {
@@ -97,10 +99,10 @@ export function buildHarborTheme(brainFogMode: boolean): HarborTheme {
       hero: sz(38),
     },
     radius: {
-      sm: 10,
-      md: 16,
-      lg: 22,
-      xl: 28,
+      sm: 8,
+      md: 12,
+      lg: 18,
+      xl: 24,
       pill: 999,
     },
     spacing: {

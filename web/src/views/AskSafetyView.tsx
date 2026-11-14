@@ -5,16 +5,15 @@ import {
 } from '@shared/types';
 import {
   AlertCircle,
-  CheckCircle2,
+  Check,
   ChevronDown,
   ChevronUp,
   Clock,
-  ShieldCheck,
-  Sparkles,
   Square,
   Volume2,
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
+import { AuxLabel } from '../components/AuxLabel';
 import { auditRegimenApi, quickCheckApi } from '../services/api';
 import {
   playCalmReadout,
@@ -27,7 +26,26 @@ import {
   useHarborStore,
 } from '../store/useHarborStore';
 
-const QUICK_CHIPS = ['Advil', 'Coffee', 'Grapefruit', 'Cold Medicine'];
+const QUICK_CHIPS = ['Advil', 'Coffee', 'Grapefruit', 'Cold medicine'];
+
+const SEVERITY_ICON = {
+  critical: AlertCircle,
+  caution: Clock,
+  safe: Check,
+} as const;
+
+const SeverityHead: React.FC<{ severity: SafetySeverity; label: string }> = ({
+  severity,
+  label,
+}) => {
+  const Icon = SEVERITY_ICON[severity];
+  return (
+    <div className="severity-head" data-severity={severity}>
+      <Icon size={20} className="shrink-0" />
+      <span>{label}</span>
+    </div>
+  );
+};
 
 export const AskSafetyView: React.FC = () => {
   const activeProfile = useActiveProfile();
@@ -90,37 +108,6 @@ export const AskSafetyView: React.FC = () => {
     }
   };
 
-  const renderSeverityHeader = (sev: SafetySeverity, label: string) => {
-    const color =
-      sev === 'critical'
-        ? 'var(--critical)'
-        : sev === 'caution'
-          ? 'var(--caution)'
-          : 'var(--safe)';
-    const Icon =
-      sev === 'critical'
-        ? AlertCircle
-        : sev === 'caution'
-          ? Clock
-          : CheckCircle2;
-
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.45rem',
-          color,
-          fontWeight: 800,
-          fontSize: '1.08rem',
-        }}
-      >
-        <Icon size={21} />
-        <span>{label}</span>
-      </div>
-    );
-  };
-
   const handleSpeakQuick = async () => {
     if (!quickResult) return;
     if (speakingQuick) {
@@ -135,284 +122,153 @@ export const AskSafetyView: React.FC = () => {
 
   return (
     <section className="page-container">
-      <div style={{ marginBottom: '1.15rem' }}>
+      <div className="mb-5">
         <h1 className="page-title">Is it safe with my meds?</h1>
         <p className="page-subtitle">
-          Ask about any painkiller, drink, vitamin, or cold medicine before
-          taking it.
+          Ask about any painkiller, drink, vitamin, or cold medicine before you
+          take it.
         </p>
       </div>
 
-      {/* Quick Search Card */}
       <div className="harbor-card">
         <form
+          className="row-2"
           onSubmit={(e) => {
             e.preventDefault();
             handleRunQuickCheck(queryText);
           }}
-          style={{ display: 'flex', gap: '0.5rem' }}
         >
           <input
             type="text"
+            id="safety-query"
             value={queryText}
             onChange={(e) => setQueryText(e.target.value)}
-            placeholder="Type e.g. Advil, Tylenol, melatonin..."
+            placeholder="Advil, Tylenol, melatonin…"
             className="harbor-input"
           />
-          <button
-            type="submit"
-            className="btn-primary"
-            style={{ width: 'auto', padding: '0 1.35rem' }}
-          >
+          <button type="submit" className="btn-primary btn-auto">
             Ask
           </button>
         </form>
 
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.45rem',
-            marginTop: '0.75rem',
-          }}
-        >
-          {QUICK_CHIPS.map((chip) => {
-            const active = queryText.toLowerCase() === chip.toLowerCase();
-            return (
-              <button
-                key={chip}
-                type="button"
-                className="chip-pill"
-                data-active={active}
-                onClick={() => handleRunQuickCheck(chip)}
-              >
-                {chip}
-              </button>
-            );
-          })}
+        <div className="row-wrap mt-3">
+          {QUICK_CHIPS.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              className="chip-pill"
+              data-active={queryText.toLowerCase() === chip.toLowerCase()}
+              onClick={() => handleRunQuickCheck(chip)}
+            >
+              {chip}
+            </button>
+          ))}
         </div>
 
         {checkingQuick && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.65rem',
-              marginTop: '1rem',
-              color: 'var(--text-secondary)',
-              fontWeight: 600,
-              fontSize: '0.92rem',
-            }}
-          >
+          <div className="row-2 mt-4">
             <div className="spinner" />
-            <span>Checking against your prescriptions...</span>
+            <span className="t-cap ink-2">
+              Checking against your prescriptions…
+            </span>
           </div>
         )}
 
         {quickResult && !checkingQuick && (
           <div
-            className="alert-card"
+            className="alert-card stack-2 mt-4"
             data-severity={quickResult.severity}
-            style={{ marginTop: '1rem', display: 'grid', gap: '0.55rem' }}
           >
-            {renderSeverityHeader(
-              quickResult.severity,
-              quickResult.verdictBadge
-            )}
+            <SeverityHead
+              severity={quickResult.severity}
+              label={quickResult.verdictBadge}
+            />
 
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: '1rem',
-                color: 'var(--text-primary)',
-              }}
-            >
-              {quickResult.calmAnswer}
-            </div>
+            <div className="t-body w-500">{quickResult.calmAnswer}</div>
 
             {!brainFogMode && (
-              <div
-                style={{
-                  fontSize: '0.9rem',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                {quickResult.whyItMatters}
-              </div>
+              <div className="t-cap ink-2">{quickResult.whyItMatters}</div>
             )}
 
-            <div
-              style={{
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                color: 'var(--accent)',
-                marginTop: '0.15rem',
-              }}
-            >
-              What to do instead: {quickResult.safeAlternativeOrTiming}
-            </div>
+            <AuxLabel
+              line={`What to do instead — ${quickResult.safeAlternativeOrTiming}`}
+              kind={quickResult.severity === 'safe' ? 'safe' : 'caution'}
+            />
 
+            {/* The grounded claim, printed the way the label prints it */}
             {!brainFogMode &&
               quickResult.labelVerified &&
               quickResult.sourceQuote && (
-                <div
-                  style={{
-                    marginTop: '0.25rem',
-                    padding: '0.65rem 0.75rem',
-                    borderRadius: '12px',
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    display: 'grid',
-                    gap: '0.25rem',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.35rem',
-                      fontSize: '0.74rem',
-                      fontWeight: 800,
-                      letterSpacing: '0.03em',
-                      textTransform: 'uppercase',
-                      color: 'var(--accent)',
-                    }}
-                  >
-                    <ShieldCheck size={14} />
-                    <span>
-                      FDA Label Verified
-                      {quickResult.sourceDrug
-                        ? ` · ${quickResult.sourceDrug}`
-                        : ''}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '0.8rem',
-                      fontStyle: 'italic',
-                      color: 'var(--text-secondary)',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    &ldquo;{quickResult.sourceQuote}&rdquo;
-                  </div>
-                </div>
+                <AuxLabel
+                  line="Verified word-for-word on the FDA label"
+                  kind="info"
+                  quote={quickResult.sourceQuote}
+                  source={
+                    quickResult.sourceDrug
+                      ? `openFDA · ${quickResult.sourceDrug}`
+                      : 'openFDA'
+                  }
+                />
               )}
 
             <button
               type="button"
+              className="btn-quiet"
+              data-active={speakingQuick}
               onClick={handleSpeakQuick}
-              style={{
-                minHeight: 'var(--min-touch)',
-                marginTop: '0.35rem',
-                borderRadius: '14px',
-                border: '1px solid var(--border-strong)',
-                background: speakingQuick ? 'var(--accent)' : 'var(--surface)',
-                color: speakingQuick ? '#ffffff' : 'var(--text-primary)',
-                fontWeight: 700,
-                fontSize: '0.88rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.45rem',
-              }}
             >
-              {speakingQuick ? (
-                <Square size={16} />
-              ) : (
-                <Volume2 size={17} color="var(--accent)" />
-              )}
-              <span>{speakingQuick ? 'Stop Audio' : 'Read Aloud'}</span>
+              {speakingQuick ? <Square size={16} /> : <Volume2 size={17} />}
+              <span>{speakingQuick ? 'Stop audio' : 'Read aloud'}</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* Expandable Full Regimen Harmony Audit */}
       {activeProfile.medications.length > 0 && (
         <div>
           <button
             type="button"
-            className="harbor-card"
+            className="harbor-card row"
             onClick={handleToggleFullAudit}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.85rem',
-              textAlign: 'left',
-              marginBottom: '0.75rem',
-            }}
+            aria-expanded={auditOpen}
           >
-            <Sparkles size={20} color="var(--accent)" />
-            <div style={{ flex: 1 }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: '1rem',
-                  color: 'var(--text-primary)',
-                }}
-              >
+            <span className="flex-1 stack-1">
+              <span className="t-body w-600">
                 Review all my medications together
-              </div>
-              <div
-                style={{
-                  fontSize: '0.82rem',
-                  color: 'var(--text-secondary)',
-                  marginTop: '0.1rem',
-                }}
-              >
-                Checks spacing rules across your{' '}
-                {activeProfile.medications.length} prescriptions
-              </div>
-            </div>
+              </span>
+              <span className="label">
+                Checks spacing across {activeProfile.medications.length}{' '}
+                prescriptions
+              </span>
+            </span>
             {auditOpen ? (
-              <ChevronUp size={20} color="var(--text-secondary)" />
+              <ChevronUp size={20} className="shrink-0" />
             ) : (
-              <ChevronDown size={20} color="var(--text-secondary)" />
+              <ChevronDown size={20} className="shrink-0" />
             )}
           </button>
 
           {auditOpen && (
-            <div style={{ display: 'grid', gap: '0.65rem' }}>
+            <div className="stack-2">
               {auditLoading || !auditResult ? (
-                <div
-                  className="harbor-card"
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '0.6rem',
-                    padding: '1.75rem',
-                  }}
-                >
+                <div className="harbor-card harbor-card--pad-lg center-col stack-2">
                   <div className="spinner" />
-                  <span
-                    style={{
-                      fontSize: '0.9rem',
-                      color: 'var(--text-secondary)',
-                    }}
-                  >
-                    Checking daily schedule harmony...
+                  <span className="t-cap ink-2">
+                    Checking daily schedule harmony…
                   </span>
                 </div>
               ) : (
                 auditResult.findings.map((finding) => (
                   <div
                     key={finding.id}
-                    className="alert-card"
+                    className="alert-card stack-2"
                     data-severity={finding.severity}
                   >
-                    {renderSeverityHeader(finding.severity, finding.title)}
-                    <div
-                      style={{
-                        fontSize: '0.9rem',
-                        color: 'var(--text-primary)',
-                        marginTop: '0.35rem',
-                      }}
-                    >
-                      {finding.actionableStep}
-                    </div>
+                    <SeverityHead
+                      severity={finding.severity}
+                      label={finding.title}
+                    />
+                    <div className="t-cap ink">{finding.actionableStep}</div>
                   </div>
                 ))
               )}

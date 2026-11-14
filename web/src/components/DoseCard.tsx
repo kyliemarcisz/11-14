@@ -1,17 +1,12 @@
 import {
   DoseLog,
+  HighRiskCategory,
   Medication,
   MissedDoseAdviceResult,
   PatientProfile,
   TimeWindow,
 } from '@shared/types';
-import {
-  Check,
-  CheckCircle2,
-  Hand,
-  Square,
-  Volume2,
-} from 'lucide-react';
+import { Hand, Square, Volume2 } from 'lucide-react';
 import React, { useState } from 'react';
 import { MEMORY_ANCHOR_PRESETS } from '../data/demoProfiles';
 import { missedDoseAdviceApi } from '../services/api';
@@ -21,6 +16,8 @@ import {
   triggerGentleFeedback,
 } from '../services/audioService';
 import { useHarborStore } from '../store/useHarborStore';
+import { AuxKind, AuxLabel } from './AuxLabel';
+import { DoseWell } from './DoseWell';
 import { PillIllustration } from './PillIllustration';
 
 interface DoseCardProps {
@@ -29,6 +26,65 @@ interface DoseCardProps {
   timeWindow: TimeWindow;
   existingLog?: DoseLog;
   todayLogs: DoseLog[];
+  /** 'hero' is the one dose in focus; 'row' is a demoted queue entry. */
+  variant?: 'hero' | 'row';
+  /** Promote this dose to the hero slot. */
+  onFocus?: () => void;
+  /** Fired after logging, so the hero can stay put and show the empty compartment. */
+  onTaken?: (medicationId: string) => void;
+}
+
+/**
+ * A high-risk sticker earns its place only when the directions line does not
+ * already say the same thing. Printing "avoid Advil" twice is noise.
+ */
+const RISK_OVERLAP: Record<HighRiskCategory, RegExp> = {
+  blood_thinner: /advil|ibuprofen|nsaid|motrin|aleve/i,
+  statin: /grapefruit/i,
+  stimulant: /sleep|before \d|a\.?m\.?\b/i,
+  blood_pressure: /dizz|stand|rise/i,
+  thyroid: /calcium|iron|empty stomach/i,
+};
+
+/** The auxiliary sticker a high-risk class earns, in a pharmacist's words. */
+const RISK_STICKERS: Record<
+  HighRiskCategory,
+  { line: string; kind: AuxKind }
+> = {
+  blood_thinner: {
+    line: 'Bleeding risk — avoid Advil, Motrin and Aleve',
+    kind: 'critical',
+  },
+  statin: {
+    line: 'Avoid grapefruit and grapefruit juice',
+    kind: 'caution',
+  },
+  stimulant: {
+    line: 'May affect sleep — take early in the day',
+    kind: 'caution',
+  },
+  blood_pressure: {
+    line: 'Rise slowly from sitting to avoid dizziness',
+    kind: 'caution',
+  },
+  thyroid: {
+    line: 'Empty stomach — space 4 hours from calcium and iron',
+    kind: 'caution',
+  },
+};
+
+/** Directions that tell you to avoid something get the warning bar. */
+function kindForFoodRules(foodRules: string): AuxKind {
+  return /\b(avoid|never|don.?t|do not|skip)\b/i.test(foodRules)
+    ? 'caution'
+    : 'info';
+}
+
+function formatClock(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 export const DoseCard: React.FC<DoseCardProps> = ({
@@ -37,6 +93,9 @@ export const DoseCard: React.FC<DoseCardProps> = ({
   timeWindow,
   existingLog,
   todayLogs,
+  variant = 'hero',
+  onFocus,
+  onTaken,
 }) => {
   const brainFogMode = useHarborStore((s) => s.brainFogMode);
   const logDose = useHarborStore((s) => s.logDose);
@@ -63,6 +122,7 @@ export const DoseCard: React.FC<DoseCardProps> = ({
       timeWindow,
       memoryAnchorCue: defaultMemoryCue,
     });
+    onTaken?.(medication.id);
   };
 
   const openGentleRecovery = async () => {
@@ -98,195 +158,137 @@ export const DoseCard: React.FC<DoseCardProps> = ({
   };
 
   const takenTimeFormatted = existingLog
-    ? new Date(existingLog.takenAtISO).toLocaleTimeString([], {
-        hour: 'numeric',
-        minute: '2-digit',
-      })
+    ? formatClock(existingLog.takenAtISO)
     : '';
+
+  /* ---------------------------------------------------------
+     Queue row: a demoted entry. Tapping it takes the hero slot.
+     --------------------------------------------------------- */
+  if (variant === 'row') {
+    return (
+      <button
+        type="button"
+        className="queue__row"
+        data-taken={isTaken}
+        onClick={() => {
+          triggerGentleFeedback();
+          onFocus?.();
+        }}
+      >
+        <span
+          className="pill-dot"
+          style={{ background: medication.pillVisual.primaryColor }}
+          aria-hidden="true"
+        />
+        <span className="queue__name">
+          {medication.name} {medication.dosage}
+        </span>
+        <span className="queue__when">
+          {isTaken ? `Taken ${takenTimeFormatted}` : 'Due'}
+        </span>
+      </button>
+    );
+  }
+
+  /* ---------------------------------------------------------
+     Hero: the one dose the screen is about.
+     --------------------------------------------------------- */
+  const riskCategory = medication.highRiskCategory;
+  const riskSticker =
+    riskCategory && !RISK_OVERLAP[riskCategory].test(medication.foodRules)
+      ? RISK_STICKERS[riskCategory]
+      : null;
 
   return (
     <>
-      <article
-        className={`harbor-card ${isTaken ? 'harbor-card--taken' : ''}`}
-      >
-        {/* Top Row: SVG Pill + Name/Dosage */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.95rem',
+      <article className="harbor-card">
+        <DoseWell
+          visual={medication.pillVisual}
+          taken={isTaken}
+          size="hero"
+          onClick={() => {
+            triggerGentleFeedback();
+            setInspectModalOpen(true);
           }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              triggerGentleFeedback();
-              setInspectModalOpen(true);
-            }}
-            style={{
-              padding: '0.5rem 0.65rem',
-              borderRadius: '16px',
-              border: '1px solid var(--border)',
-              background: 'var(--bg-primary)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-            title={`Inspect ${medication.name} pill`}
-          >
-            <PillIllustration visual={medication.pillVisual} size="sm" />
-          </button>
+          actionLabel={`Inspect the ${medication.name} tablet up close`}
+        />
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: '1.35rem',
-                fontWeight: 800,
-                letterSpacing: '-0.02em',
-                color: 'var(--text-primary)',
-              }}
-            >
-              {medication.name}
-            </h3>
-            <div
-              style={{
-                fontSize: '0.96rem',
-                fontWeight: 600,
-                color: 'var(--text-secondary)',
-                marginTop: '0.1rem',
-              }}
-            >
-              {medication.dosage}
-              {showSecondary ? ` • ${medication.genericName}` : ''}
-            </div>
-            {showSecondary && !isTaken && (
-              <div
-                style={{
-                  fontSize: '0.82rem',
-                  color: 'var(--text-secondary)',
-                  marginTop: '0.28rem',
-                }}
-              >
-                {medication.foodRules}
-              </div>
-            )}
+        <div className="mt-4">
+          <h2 className="dose-name">{medication.name}</h2>
+          <div className="dose-meta">
+            {medication.dosage}
+            {showSecondary ? ` · ${medication.genericName}` : ''}
+            {medication.pillVisual.imprintCode
+              ? ` · ${medication.pillVisual.imprintCode}`
+              : ''}
           </div>
         </div>
 
-        {/* Taken Confirmation OR Primary Take Button */}
         {isTaken && existingLog ? (
-          <div style={{ marginTop: '0.95rem', display: 'grid', gap: '0.55rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  color: 'var(--safe)',
-                  fontWeight: 700,
-                  fontSize: '0.98rem',
-                }}
-              >
-                <CheckCircle2 size={20} />
-                <span>Taken at {takenTimeFormatted}</span>
+          <div className="stack-2 mt-4">
+            <div className="aux" data-kind="safe">
+              <div className="aux__bar" />
+              <div className="aux__body">
+                <div className="aux__line">
+                  Logged {takenTimeFormatted}
+                </div>
               </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  triggerGentleFeedback();
-                  undoDoseLog(existingLog.id);
-                }}
-                style={{
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  color: 'var(--text-secondary)',
-                  padding: '0.25rem 0.4rem',
-                }}
-              >
-                Undo
-              </button>
             </div>
 
             <button
               type="button"
+              className="btn-quiet"
               onClick={() => {
                 triggerGentleFeedback();
                 setShowCueModal(true);
               }}
-              style={{
-                minHeight: 'var(--min-touch)',
-                padding: '0.5rem 0.85rem',
-                borderRadius: '12px',
-                border: '1px solid var(--safe-border)',
-                background: 'var(--surface)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.55rem',
-                textAlign: 'left',
-              }}
             >
-              <Hand size={16} color="var(--safe)" />
-              <span
-                style={{
-                  flex: 1,
-                  fontSize: '0.88rem',
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
-                }}
-              >
+              <Hand size={16} />
+              <span className="flex-1 truncate">
                 {existingLog.memoryAnchorCue || defaultMemoryCue}
               </span>
-              <span
-                style={{
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  color: 'var(--accent)',
-                }}
-              >
-                Change
-              </span>
+              <span className="label">Change</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-ghost btn-ghost--wide"
+              onClick={() => {
+                triggerGentleFeedback();
+                undoDoseLog(existingLog.id);
+              }}
+            >
+              Undo this dose
             </button>
           </div>
         ) : (
-          <div style={{ marginTop: '1rem' }}>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleTakeDose}
-            >
-              <Check size={20} strokeWidth={2.6} />
-              <span>Take Dose</span>
+          <>
+            <div className="stack-2 mt-3">
+              <AuxLabel
+                line={medication.foodRules}
+                kind={kindForFoodRules(medication.foodRules)}
+              />
+              {showSecondary && riskSticker && (
+                <AuxLabel line={riskSticker.line} kind={riskSticker.kind} />
+              )}
+            </div>
+
+            <button type="button" className="btn-primary mt-4" onClick={handleTakeDose}>
+              Took it
             </button>
 
             <button
               type="button"
+              className="btn-ghost btn-ghost--wide mt-2"
               onClick={openGentleRecovery}
-              style={{
-                width: '100%',
-                minHeight: brainFogMode ? '64px' : '36px',
-                marginTop: '0.4rem',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                color: 'var(--text-secondary)',
-                textAlign: 'center',
-              }}
             >
-              Running late or not sure if you already took this?
+              Running late, or not sure if you already took this?
             </button>
-          </div>
+          </>
         )}
       </article>
 
-      {/* Change Physical Habit Cue Modal */}
+      {/* Which physical habit did you do? */}
       {showCueModal && (
         <div
           className="modal-backdrop"
@@ -295,32 +297,25 @@ export const DoseCard: React.FC<DoseCardProps> = ({
           aria-modal="true"
         >
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3 className="section-title">Which physical habit did you do?</h3>
-            <p className="page-subtitle" style={{ marginBottom: '1rem' }}>
+            <h3 className="section-title">
+              Which physical habit did you do?
+            </h3>
+            <p className="page-subtitle mb-4">
               Helps you verify later without guessing.
             </p>
-            <div style={{ display: 'grid', gap: '0.55rem' }}>
+            <div className="stack-2">
               {MEMORY_ANCHOR_PRESETS.map((preset) => (
                 <button
                   key={preset}
                   type="button"
+                  className="option"
+                  data-selected={existingLog?.memoryAnchorCue === preset}
                   onClick={() => {
                     triggerGentleFeedback();
                     if (existingLog) {
                       updateDoseAnchor(existingLog.id, preset);
                     }
                     setShowCueModal(false);
-                  }}
-                  style={{
-                    minHeight: 'var(--min-touch)',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '14px',
-                    border: '1px solid var(--border)',
-                    background: 'var(--bg-primary)',
-                    textAlign: 'left',
-                    fontWeight: 600,
-                    fontSize: '0.95rem',
-                    color: 'var(--text-primary)',
                   }}
                 >
                   {preset}
@@ -331,7 +326,7 @@ export const DoseCard: React.FC<DoseCardProps> = ({
         </div>
       )}
 
-      {/* Pill Visual Zoom Modal */}
+      {/* The tablet, up close */}
       {inspectModalOpen && (
         <div
           className="modal-backdrop"
@@ -340,42 +335,27 @@ export const DoseCard: React.FC<DoseCardProps> = ({
           aria-modal="true"
         >
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3 className="page-title" style={{ fontSize: '1.4rem' }}>
-              {medication.name} ({medication.dosage})
+            <h3 className="section-title">
+              {medication.name} {medication.dosage}
             </h3>
-            <p className="page-subtitle" style={{ marginBottom: '1.1rem' }}>
+            <p className="page-subtitle mb-4">
               {medication.plainEnglishPurpose}
             </p>
 
-            <div
-              style={{
-                padding: '1.25rem',
-                borderRadius: '18px',
-                border: '1px solid var(--border)',
-                background: 'var(--bg-primary)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-              }}
-            >
-              <PillIllustration visual={medication.pillVisual} size="lg" />
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: '0.9rem',
-                  color: 'var(--text-primary)',
-                  marginTop: '0.5rem',
-                }}
-              >
-                {medication.pillVisual.shape.toUpperCase()} • Imprint “
-                {medication.pillVisual.imprintCode}”
+            <div className="well">
+              <div className="well__content">
+                <PillIllustration visual={medication.pillVisual} size="lg" />
               </div>
+            </div>
+
+            <div className="label mt-3">
+              {medication.pillVisual.shape} · imprint{' '}
+              {medication.pillVisual.imprintCode || 'none'}
             </div>
 
             <button
               type="button"
-              className="btn-primary"
-              style={{ marginTop: '1.15rem' }}
+              className="btn-secondary mt-4"
               onClick={() => setInspectModalOpen(false)}
             >
               Close
@@ -384,7 +364,7 @@ export const DoseCard: React.FC<DoseCardProps> = ({
         </div>
       )}
 
-      {/* Calm Zero-Shame Gemini Recovery Modal */}
+      {/* Calm next step */}
       {recoveryModalOpen && (
         <div
           className="modal-backdrop"
@@ -397,103 +377,50 @@ export const DoseCard: React.FC<DoseCardProps> = ({
           aria-modal="true"
         >
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3 className="page-title" style={{ fontSize: '1.4rem' }}>
-              {medication.name} — Calm Next Step
+            <h3 className="section-title">
+              {medication.name} — calm next step
             </h3>
 
             {recoveryLoading || !recoveryAdvice ? (
-              <div
-                style={{
-                  padding: '2rem 0',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                }}
-              >
+              <div className="center-col stack-2 mt-5">
                 <div className="spinner" />
-                <span
-                  style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}
-                >
-                  Checking safe guidance...
-                </span>
+                <span className="t-cap ink-2">Checking safe guidance…</span>
               </div>
             ) : (
-              <div
-                style={{
-                  marginTop: '0.9rem',
-                  display: 'grid',
-                  gap: '0.85rem',
-                }}
-              >
-                <div
-                  style={{
-                    fontWeight: 700,
-                    fontSize: '1rem',
-                    color: 'var(--text-primary)',
-                  }}
-                >
+              <div className="stack mt-4">
+                <div className="t-body w-600">
                   {recoveryAdvice.calmHeadline}
                 </div>
 
                 <button
                   type="button"
+                  className="btn-quiet"
+                  data-active={isSpeaking}
                   onClick={() => handleSpeakAdvice(recoveryAdvice.spokenScript)}
-                  style={{
-                    minHeight: 'var(--min-touch)',
-                    borderRadius: '14px',
-                    border: '1px solid var(--accent-border)',
-                    background: isSpeaking
-                      ? 'var(--accent)'
-                      : 'var(--accent-soft)',
-                    color: isSpeaking ? '#ffffff' : 'var(--accent)',
-                    fontWeight: 700,
-                    fontSize: '0.92rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                  }}
                 >
                   {isSpeaking ? <Square size={16} /> : <Volume2 size={18} />}
-                  <span>{isSpeaking ? 'Stop Audio' : 'Read Aloud Gently'}</span>
+                  <span>{isSpeaking ? 'Stop audio' : 'Read aloud gently'}</span>
                 </button>
 
-                <div style={{ display: 'grid', gap: '0.5rem' }}>
+                <ol className="recovery-steps">
                   {recoveryAdvice.stepByStepAction.map((step, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        fontSize: '0.92rem',
-                        color: 'var(--text-primary)',
-                      }}
-                    >
-                      <strong>{idx + 1}. </strong>
+                    <li key={idx} className="t-cap ink">
                       {step}
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ol>
 
-                <div className="alert-card" data-severity="caution">
-                  <div
-                    style={{
-                      fontSize: '0.88rem',
-                      color: 'var(--text-primary)',
-                    }}
-                  >
-                    {recoveryAdvice.doubleDoseWarning}
-                  </div>
-                </div>
+                <AuxLabel
+                  line={recoveryAdvice.doubleDoseWarning}
+                  kind="critical"
+                />
               </div>
             )}
 
             <button
               type="button"
-              className="btn-primary"
-              style={{
-                marginTop: '1.15rem',
-                background: 'var(--text-primary)',
-              }}
+              className="btn-primary mt-4"
+              data-tone="neutral"
               onClick={() => {
                 stopCalmAudio();
                 setIsSpeaking(false);

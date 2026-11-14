@@ -156,7 +156,7 @@ export default function OnboardingScreen() {
                 <PillIllustration
                   visual={{
                     shape: 'capsule',
-                    primaryColor: '#2A7B6F',
+                    primaryColor: '#C06A14',
                     secondaryColor: '#FFFDF8',
                     imprintCode: 'HARBOR',
                   }}

@@ -1,7 +1,9 @@
-import { TimeWindow } from '@shared/types';
-import { Camera, Coffee, Plus } from 'lucide-react';
+import { Medication, TimeWindow } from '@shared/types';
+import { Camera, Plus } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
+import { AuxLabel } from '../components/AuxLabel';
 import { DoseCard } from '../components/DoseCard';
+import { TideStrip, TideWindow } from '../components/TideStrip';
 import { TIME_WINDOWS } from '../data/demoProfiles';
 import { triggerGentleFeedback } from '../services/audioService';
 import {
@@ -25,21 +27,15 @@ export const TodayView: React.FC = () => {
     return hasSuggested ? suggested : 'Morning';
   });
 
+  /** Which dose holds the hero slot. Null means "the first one still due". */
+  const [focusedMedId, setFocusedMedId] = useState<string | null>(null);
+
   const todayLogs = useMemo(
     () =>
       allLogs.filter(
         (l) => l.profileId === activeProfile.id && isSameLocalDay(l.takenAtISO)
       ),
     [allLogs, activeProfile.id]
-  );
-
-  const totalScheduledToday = useMemo(
-    () =>
-      activeProfile.medications.reduce(
-        (acc, med) => acc + med.timeWindows.length,
-        0
-      ),
-    [activeProfile.medications]
   );
 
   const windowMeds = useMemo(
@@ -50,197 +46,180 @@ export const TodayView: React.FC = () => {
     [activeProfile.medications, selectedWindow]
   );
 
-  const progressRatio =
-    totalScheduledToday > 0
-      ? Math.min(1, todayLogs.length / totalScheduledToday)
-      : 0;
+  const logFor = (med: Medication) =>
+    todayLogs.find(
+      (l) => l.medicationId === med.id && l.timeWindow === selectedWindow
+    );
 
-  return (
-    <section className="page-container">
-      <div style={{ marginBottom: '1rem' }}>
-        <h1 className="page-title">{selectedWindow} Pills</h1>
+  const stillDue = windowMeds.filter((m) => !logFor(m));
+  const alreadyTaken = windowMeds.filter((m) => logFor(m));
 
-        {totalScheduledToday > 0 && (
-          <div style={{ marginTop: '0.55rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '0.88rem',
-                fontWeight: 600,
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <span>
-                {todayLogs.length} of {totalScheduledToday} taken today
-              </span>
-              {progressRatio >= 1 && (
-                <span style={{ color: 'var(--safe)', fontWeight: 700 }}>
-                  All complete ✓
-                </span>
-              )}
-            </div>
-            <div className="progress-track">
-              <div
-                className="progress-fill"
-                data-complete={progressRatio >= 1}
-                style={{ width: `${Math.round(progressRatio * 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
+  /* The hero is the focused dose if it is still in this window, otherwise the
+     first one still due, otherwise the first one taken — so a finished window
+     shows an empty compartment rather than nothing at all. */
+  const heroMed =
+    windowMeds.find((m) => m.id === focusedMedId) ??
+    stillDue[0] ??
+    alreadyTaken[0];
 
-      {activeProfile.medications.length === 0 ? (
-        <div
-          className="harbor-card"
-          style={{
-            padding: '2rem 1.5rem',
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-          }}
-        >
-          <div
-            style={{
-              width: 58,
-              height: 58,
-              borderRadius: '50%',
-              background: 'var(--accent-soft)',
-              color: 'var(--accent)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '0.9rem',
-            }}
-          >
+  const queueMeds = windowMeds.filter((m) => m.id !== heroMed?.id);
+
+  const tideWindows: TideWindow[] = useMemo(
+    () =>
+      TIME_WINDOWS.map((win) => {
+        const meds = activeProfile.medications.filter((m) =>
+          m.timeWindows.includes(win.key)
+        );
+        return {
+          key: win.key,
+          label: win.label,
+          total: meds.length,
+          done: meds.filter((m) =>
+            todayLogs.some(
+              (l) => l.medicationId === m.id && l.timeWindow === win.key
+            )
+          ).length,
+        };
+      }),
+    [activeProfile.medications, todayLogs]
+  );
+
+  const totalScheduledToday = tideWindows.reduce((n, w) => n + w.total, 0);
+  const totalTakenToday = tideWindows.reduce((n, w) => n + w.done, 0);
+  const windowMeta = TIME_WINDOWS.find((w) => w.key === selectedWindow);
+
+  const handleSelectWindow = (win: TimeWindow) => {
+    triggerGentleFeedback();
+    setSelectedWindow(win);
+    setFocusedMedId(null);
+  };
+
+  /* ---- Nothing added yet ---- */
+  if (activeProfile.medications.length === 0) {
+    return (
+      <section className="page-container">
+        <div className="harbor-card harbor-card--pad-lg center-col">
+          <div className="empty-badge">
             <Camera size={26} />
           </div>
-          <h2 className="section-title" style={{ fontSize: '1.35rem' }}>
-            Your schedule is ready
-          </h2>
-          <p className="page-subtitle" style={{ maxWidth: 400 }}>
-            Snap or upload a photo of your first pill bottle and we’ll set up
-            its time of day and visual match automatically.
+          <h1 className="section-title mt-3">Your schedule is ready</h1>
+          <p className="page-subtitle">
+            Snap or upload a photo of your first pill bottle. We&rsquo;ll read
+            the label and set its time of day for you.
           </p>
 
           <button
             type="button"
-            className="btn-primary"
-            style={{ marginTop: '1.25rem' }}
+            className="btn-primary mt-5"
             onClick={() => setActiveTab('scan')}
           >
             <Plus size={20} />
-            <span>Add First Medication</span>
+            <span>Add first medication</span>
           </button>
 
           <button
             type="button"
+            className="btn-ghost mt-2"
             onClick={() => {
               triggerGentleFeedback();
               loadSampleProfiles();
-            }}
-            style={{
-              marginTop: '0.85rem',
-              fontSize: '0.88rem',
-              fontWeight: 600,
-              color: 'var(--accent)',
-              padding: '0.4rem',
             }}
           >
             Or load sample prescriptions to explore
           </button>
         </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="page-container">
+      <div className="row-between mb-3">
+        <h1 className="label">
+          {windowMeta?.label ?? selectedWindow}
+          {windowMeta ? ` · ${windowMeta.timeRange}` : ''}
+        </h1>
+        <span className="label nums shrink-0">
+          {totalTakenToday} / {totalScheduledToday} today
+        </span>
+      </div>
+
+      <div className="mb-5">
+        <TideStrip
+          windows={tideWindows}
+          selected={selectedWindow}
+          onSelect={handleSelectWindow}
+        />
+      </div>
+
+      {windowMeds.length === 0 ? (
+        <div className="harbor-card harbor-card--pad-lg center-col">
+          <div className="section-title">
+            Nothing scheduled this {windowMeta?.label.toLowerCase()}
+          </div>
+          <p className="page-subtitle">
+            Pick another time of day above whenever you need it.
+          </p>
+        </div>
       ) : (
         <>
-          {/* Segmented Time-Window Bar */}
-          <div className="segmented-bar" role="tablist">
-            {TIME_WINDOWS.map((win) => {
-              const medsForWin = activeProfile.medications.filter((m) =>
-                m.timeWindows.includes(win.key)
-              );
-              const allDone =
-                medsForWin.length > 0 &&
-                medsForWin.every((m) =>
-                  todayLogs.some(
-                    (l) => l.medicationId === m.id && l.timeWindow === win.key
-                  )
-                );
-              const selected = selectedWindow === win.key;
+          {stillDue.length === 0 && (
+            <div className="mb-3">
+              <AuxLabel
+                line={`All ${windowMeta?.label ?? selectedWindow} doses taken`}
+                kind="safe"
+              />
+            </div>
+          )}
 
-              return (
-                <button
-                  key={win.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  className="segment-btn"
-                  data-active={selected}
-                  data-empty={!selected && medsForWin.length === 0}
-                  onClick={() => {
-                    triggerGentleFeedback();
-                    setSelectedWindow(win.key);
-                  }}
-                >
-                  <span>
-                    {win.label}
-                    {allDone ? ' ✓' : ''}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {heroMed && (
+            <DoseCard
+              key={`${heroMed.id}-${selectedWindow}`}
+              medication={heroMed}
+              patient={activeProfile}
+              timeWindow={selectedWindow}
+              existingLog={logFor(heroMed)}
+              todayLogs={todayLogs}
+              variant="hero"
+              onTaken={(id) => setFocusedMedId(id)}
+            />
+          )}
 
-          {windowMeds.length === 0 ? (
-            <div
-              className="harbor-card"
-              style={{
-                padding: '2.2rem 1.5rem',
-                textAlign: 'center',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
+          {/* The compartment stays empty in front of you until you move on. */}
+          {heroMed && logFor(heroMed) && stillDue.length > 0 && (
+            <button
+              type="button"
+              className="btn-primary mb-3"
+              onClick={() => {
+                triggerGentleFeedback();
+                setFocusedMedId(stillDue[0].id);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
             >
-              <Coffee size={28} color="var(--accent)" />
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: '1.1rem',
-                  marginTop: '0.6rem',
-                }}
-              >
-                No pills in the {selectedWindow}
+              Next — {stillDue[0].name} {stillDue[0].dosage}
+            </button>
+          )}
+
+          {queueMeds.length > 0 && (
+            <div className="harbor-card">
+              <div className="label mb-3">
+                Also this {windowMeta?.label.toLowerCase()}
               </div>
-              <div
-                style={{
-                  fontSize: '0.9rem',
-                  color: 'var(--text-secondary)',
-                  marginTop: '0.25rem',
-                }}
-              >
-                Select another time of day above whenever you need it.
+              <div className="queue queue--flush">
+                {queueMeds.map((med) => (
+                  <DoseCard
+                    key={`${med.id}-${selectedWindow}`}
+                    medication={med}
+                    patient={activeProfile}
+                    timeWindow={selectedWindow}
+                    existingLog={logFor(med)}
+                    todayLogs={todayLogs}
+                    variant="row"
+                    onFocus={() => setFocusedMedId(med.id)}
+                  />
+                ))}
               </div>
             </div>
-          ) : (
-            windowMeds.map((med) => {
-              const logForWindow = todayLogs.find(
-                (l) =>
-                  l.medicationId === med.id && l.timeWindow === selectedWindow
-              );
-              return (
-                <DoseCard
-                  key={med.id}
-                  medication={med}
-                  patient={activeProfile}
-                  timeWindow={selectedWindow}
-                  existingLog={logForWindow}
-                  todayLogs={todayLogs}
-                />
-              );
-            })
           )}
         </>
       )}

@@ -42,8 +42,8 @@ export const PillIllustration: React.FC<PillIllustrationProps> = ({
   const primary = visual.primaryColor || '#F4A7B9';
   const secondary = visual.secondaryColor || primary;
   const lightPrimary = isLightColor(primary);
-  const textFill = lightPrimary ? '#132238' : '#FFFFFF';
-  const strokeColor = lightPrimary ? '#CEC7B8' : 'rgba(19,34,56,0.18)';
+  const textFill = lightPrimary ? '#1A2630' : '#FFFFFF';
+  const strokeColor = lightPrimary ? '#AFBAB4' : 'rgba(19,34,56,0.18)';
   const imprint = (visual.imprintCode || '').slice(0, 10);
 
   return (
@@ -104,7 +104,7 @@ export const PillIllustration: React.FC<PillIllustrationProps> = ({
               y="39"
               fontSize={dimensions.fontSize}
               fontWeight="700"
-              fill="#132238"
+              fill="#1A2630"
               textAnchor="middle"
               letterSpacing="0.5"
             >

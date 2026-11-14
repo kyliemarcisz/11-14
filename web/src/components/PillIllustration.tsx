@@ -32,8 +32,8 @@ export const PillIllustration: React.FC<PillIllustrationProps> = ({
   const primary = visual.primaryColor || '#F4A7B9';
   const secondary = visual.secondaryColor || primary;
   const lightPrimary = isLightColor(primary);
-  const textFill = lightPrimary ? '#132238' : '#FFFFFF';
-  const strokeColor = lightPrimary ? '#CEC7B8' : 'rgba(19, 34, 56, 0.18)';
+  const textFill = lightPrimary ? '#1A2630' : '#FFFFFF';
+  const strokeColor = lightPrimary ? '#AFBAB4' : 'rgba(26, 38, 48, 0.20)';
   const imprint = (visual.imprintCode || '').slice(0, 10);
 
   return (
@@ -55,7 +55,7 @@ export const PillIllustration: React.FC<PillIllustrationProps> = ({
         viewBox="0 0 120 72"
         xmlns="http://www.w3.org/2000/svg"
       >
-        <ellipse cx="60" cy="61" rx="42" ry="6" fill="rgba(19, 34, 56, 0.08)" />
+        <ellipse cx="60" cy="61" rx="42" ry="6" fill="rgba(26, 38, 48, 0.13)" />
 
         {visual.shape === 'capsule' && (
           <g>
@@ -72,7 +72,7 @@ export const PillIllustration: React.FC<PillIllustrationProps> = ({
                 y1="16"
                 x2="60"
                 y2="54"
-                stroke="rgba(19, 34, 56, 0.18)"
+                stroke="rgba(26, 38, 48, 0.20)"
                 strokeWidth="1.5"
               />
               <rect
@@ -100,7 +100,7 @@ export const PillIllustration: React.FC<PillIllustrationProps> = ({
               y="39"
               fontSize={dimensions.fontSize}
               fontWeight="700"
-              fill="#132238"
+              fill="#1A2630"
               textAnchor="middle"
               letterSpacing="0.5"
             >
@@ -175,7 +175,7 @@ export const PillIllustration: React.FC<PillIllustrationProps> = ({
               y1="35"
               x2="80"
               y2="35"
-              stroke="rgba(19, 34, 56, 0.09)"
+              stroke="rgba(26, 38, 48, 0.10)"
               strokeWidth="1.1"
             />
             <text
@@ -202,7 +202,7 @@ export const PillIllustration: React.FC<PillIllustrationProps> = ({
             <polygon
               points="49,16 71,16 83,28 83,42 71,54 49,54 37,42 37,28"
               fill="none"
-              stroke="rgba(19, 34, 56, 0.1)"
+              stroke="rgba(26, 38, 48, 0.12)"
               strokeWidth="1"
             />
             <text

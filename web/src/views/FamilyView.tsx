@@ -1,12 +1,5 @@
 import { FamilyUpdateResult } from '@shared/types';
-import {
-  CheckCircle2,
-  Compass,
-  Copy,
-  LogOut,
-  Plus,
-  Trash2,
-} from 'lucide-react';
+import { Check, Compass, Copy, LogOut, Plus, Trash2 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { PillIllustration } from '../components/PillIllustration';
 import { familyUpdateApi } from '../services/api';
@@ -65,7 +58,7 @@ export const FamilyView: React.FC = () => {
       try {
         await navigator.clipboard.writeText(result.smsText);
       } catch {
-        // Ignore clipboard fallback
+        // The text stays on screen to copy by hand.
       }
 
       triggerGentleFeedback([15, 30, 15]);
@@ -93,134 +86,73 @@ export const FamilyView: React.FC = () => {
 
   return (
     <section className="page-container">
-      <div style={{ marginBottom: '1.15rem' }}>
-        <h1 className="page-title">Family & Profile</h1>
-      </div>
+      <h1 className="page-title mb-5">Family and profile</h1>
 
-      {/* 1. Share Today's Update */}
+      {/* Share today's update */}
       <div className="harbor-card">
-        <h2 className="section-title">Share Today’s Update</h2>
-        <p className="page-subtitle" style={{ fontSize: '0.92rem' }}>
-          Copies a calm text message summarizing today’s taken doses so you can
-          paste it into iMessage or WhatsApp.
+        <h2 className="section-title">Share today&rsquo;s update</h2>
+        <p className="page-subtitle">
+          Copies a short text summarizing the doses taken today, ready to paste
+          into Messages or WhatsApp.
         </p>
 
         <button
           type="button"
-          className={`btn-primary ${copiedJustNow ? 'btn-safe' : ''}`}
-          style={{ marginTop: '1rem' }}
+          className="btn-primary mt-4"
+          data-tone={copiedJustNow ? 'done' : undefined}
           disabled={generatingSms}
           onClick={handleGenerateAndCopyUpdate}
         >
           {generatingSms ? (
-            <div
-              className="spinner"
-              style={{
-                width: 18,
-                height: 18,
-                borderWidth: 2,
-                borderTopColor: '#ffffff',
-              }}
-            />
+            <div className="spinner" data-on-accent="true" />
           ) : copiedJustNow ? (
-            <CheckCircle2 size={19} />
+            <Check size={19} />
           ) : (
             <Copy size={19} />
           )}
           <span>
             {generatingSms
-              ? 'Creating Text...'
+              ? 'Writing the text…'
               : copiedJustNow
-                ? 'Copied to Clipboard!'
-                : 'Copy Family Text Update'}
+                ? 'Copied'
+                : 'Copy family text update'}
           </span>
         </button>
 
         {familyUpdate && (
-          <div
-            style={{
-              marginTop: '0.9rem',
-              padding: '0.9rem 1rem',
-              borderRadius: '14px',
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              whiteSpace: 'pre-wrap',
-              fontSize: '0.9rem',
-              color: 'var(--text-primary)',
-            }}
-          >
-            {familyUpdate.smsText}
-          </div>
+          <div className="transcript mt-3">{familyUpdate.smsText}</div>
         )}
       </div>
 
-      {/* 2. Pills Remaining */}
+      {/* Pills remaining */}
       {activeProfile.medications.length > 0 && (
         <div className="harbor-card">
-          <h2 className="section-title" style={{ marginBottom: '0.85rem' }}>
-            Pills Remaining
-          </h2>
+          <h2 className="section-title mb-4">Pills remaining</h2>
 
-          <div style={{ display: 'grid', gap: '0.6rem' }}>
+          <div className="stack-2">
             {activeProfile.medications.map((med) => {
               const isLow = med.supplyRemaining <= 7;
               return (
                 <div
                   key={med.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    padding: '0.65rem 0.8rem',
-                    borderRadius: '16px',
-                    background: isLow
-                      ? 'var(--caution-soft)'
-                      : 'var(--bg-primary)',
-                    border: `1px solid ${
-                      isLow ? 'var(--caution-border)' : 'var(--border)'
-                    }`,
-                  }}
+                  className="supply-row"
+                  data-low={isLow}
                 >
                   <PillIllustration visual={med.pillVisual} size="sm" />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: '0.98rem',
-                        color: 'var(--text-primary)',
-                      }}
-                    >
-                      {med.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '0.8rem',
-                        fontWeight: isLow ? 700 : 500,
-                        color: isLow
-                          ? 'var(--caution)'
-                          : 'var(--text-secondary)',
-                      }}
-                    >
-                      {med.supplyRemaining} left
-                      {isLow ? ' • Refill soon' : ''}
+                  <div className="flex-1 stack-1">
+                    <div className="t-cap w-600">{med.name}</div>
+                    <div className="label nums">
+                      {med.supplyRemaining} left{isLow ? ' · refill soon' : ''}
                     </div>
                   </div>
                   <button
                     type="button"
+                    className="chip-pill shrink-0"
                     onClick={() => {
                       triggerGentleFeedback();
                       refillMedication(activeProfile.id, med.id, 30);
                     }}
-                    style={{
-                      minHeight: 'calc(var(--min-touch) - 6px)',
-                      padding: '0 0.85rem',
-                      borderRadius: '12px',
-                      border: '1px solid var(--border-strong)',
-                      background: 'var(--surface)',
-                      color: 'var(--accent)',
-                      fontWeight: 700,
-                      fontSize: '0.82rem',
-                    }}
+                    aria-label={`Add 30 tablets of ${med.name}`}
                   >
                     +30
                   </button>
@@ -231,107 +163,59 @@ export const FamilyView: React.FC = () => {
         </div>
       )}
 
-      {/* 3. Saved Profiles & Account */}
+      {/* Saved profiles */}
       <div className="harbor-card">
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '0.85rem',
-          }}
-        >
-          <h2 className="section-title">Saved Profiles</h2>
+        <div className="row-between mb-4">
+          <h2 className="section-title">Saved profiles</h2>
           <button
             type="button"
-            className="chip-pill"
-            style={{
-              background: 'var(--accent-soft)',
-              borderColor: 'var(--accent-border)',
-              color: 'var(--accent)',
-              fontWeight: 700,
-            }}
+            className="chip-pill shrink-0"
+            data-tone="accent"
             onClick={() => {
               triggerGentleFeedback();
               setNewProfileModalOpen(true);
             }}
           >
             <Plus size={16} />
-            <span>Add Person</span>
+            <span>Add person</span>
           </button>
         </div>
 
-        <div style={{ display: 'grid', gap: '0.55rem' }}>
+        <div className="stack-2">
           {profiles.map((prof) => {
             const selected = prof.id === activeProfile.id;
             return (
               <div
                 key={prof.id}
-                style={{
-                  minHeight: 'var(--min-touch)',
-                  padding: '0.6rem 0.9rem',
-                  borderRadius: '14px',
-                  border: `1.5px solid ${
-                    selected ? 'var(--accent)' : 'var(--border)'
-                  }`,
-                  background: selected
-                    ? 'var(--accent-soft)'
-                    : 'var(--bg-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.6rem',
-                }}
+                className="profile-row"
+                data-selected={selected}
               >
                 <button
                   type="button"
+                  className="profile-row__main"
                   onClick={() => {
                     triggerGentleFeedback();
                     setActiveProfile(prof.id);
                   }}
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    textAlign: 'left',
-                    padding: '0.15rem 0',
-                  }}
                 >
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: '0.98rem',
-                        color: 'var(--text-primary)',
-                      }}
-                    >
-                      {prof.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '0.78rem',
-                        color: 'var(--text-secondary)',
-                      }}
-                    >
-                      {prof.relation} • {prof.medications.length} meds
-                    </div>
-                  </div>
-                  {selected && <CheckCircle2 size={19} color="var(--accent)" />}
+                  <span className="flex-1 stack-1">
+                    <span className="t-cap w-600">{prof.name}</span>
+                    <span className="label">
+                      {prof.relation} · {prof.medications.length} meds
+                    </span>
+                  </span>
+                  {selected && <Check size={18} className="shrink-0" />}
                 </button>
 
                 {profiles.length > 1 && (
                   <button
                     type="button"
+                    className="icon-btn-quiet"
                     onClick={() => {
                       triggerGentleFeedback();
                       removeProfileById(prof.id);
                     }}
                     aria-label={`Remove ${prof.name}`}
-                    style={{
-                      padding: '0.4rem',
-                      color: 'var(--text-muted)',
-                      display: 'inline-flex',
-                    }}
                   >
                     <Trash2 size={17} />
                   </button>
@@ -341,13 +225,7 @@ export const FamilyView: React.FC = () => {
           })}
         </div>
 
-        <div
-          style={{
-            marginTop: '1.15rem',
-            display: 'grid',
-            gap: '0.6rem',
-          }}
-        >
+        <div className="stack-2 mt-5">
           <button
             type="button"
             className="btn-secondary"
@@ -356,8 +234,8 @@ export const FamilyView: React.FC = () => {
               reopenOnboarding();
             }}
           >
-            <Compass size={18} color="var(--accent)" />
-            <span>Replay Welcome Walkthrough</span>
+            <Compass size={18} />
+            <span>Replay the welcome walkthrough</span>
           </button>
 
           <button
@@ -369,12 +247,12 @@ export const FamilyView: React.FC = () => {
             }}
           >
             <LogOut size={18} />
-            <span>Log Out & Remove My Profile</span>
+            <span>Log out and remove my profile</span>
           </button>
         </div>
       </div>
 
-      {/* Add Person Modal */}
+      {/* Add person */}
       {newProfileModalOpen && (
         <div
           className="modal-backdrop"
@@ -387,39 +265,39 @@ export const FamilyView: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
             onSubmit={handleCreateProfile}
           >
-            <h3 className="page-title" style={{ fontSize: '1.4rem' }}>
-              Add Person
-            </h3>
-            <div
-              style={{
-                display: 'grid',
-                gap: '0.75rem',
-                marginTop: '0.95rem',
-              }}
-            >
-              <input
-                type="text"
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Name (e.g., Dad or Elena)"
-                className="harbor-input"
-              />
-              <input
-                type="text"
-                value={newRelation}
-                onChange={(e) => setNewRelation(e.target.value)}
-                placeholder="Note (e.g., Family Schedule)"
-                className="harbor-input"
-              />
+            <h3 className="section-title">Add person</h3>
+            <div className="stack mt-4">
+              <div>
+                <label className="field-label" htmlFor="new-person-name">
+                  Name
+                </label>
+                <input
+                  id="new-person-name"
+                  type="text"
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Dad, or Elena"
+                  className="harbor-input"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="new-person-note">
+                  Note
+                </label>
+                <input
+                  id="new-person-note"
+                  type="text"
+                  value={newRelation}
+                  onChange={(e) => setNewRelation(e.target.value)}
+                  placeholder="Family schedule"
+                  className="harbor-input"
+                />
+              </div>
             </div>
 
-            <button
-              type="submit"
-              className="btn-primary"
-              style={{ marginTop: '1.1rem' }}
-            >
-              Save Person
+            <button type="submit" className="btn-primary mt-4">
+              Save person
             </button>
           </form>
         </div>

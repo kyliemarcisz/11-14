@@ -1,7 +1,7 @@
 import { ScanPrescriptionResult } from '@shared/types';
 import {
   Camera,
-  CheckCircle2,
+  Check,
   ChevronDown,
   ChevronUp,
   ImagePlus,
@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
+import { AuxLabel } from '../components/AuxLabel';
 import { PillIllustration } from '../components/PillIllustration';
 import { scanPrescriptionApi } from '../services/api';
 import {
@@ -109,7 +110,7 @@ export const AddPillView: React.FC = () => {
       }
     } catch {
       setCameraError(
-        'Camera permission was declined or unavailable. You can upload an image file instead.'
+        'Camera permission was declined or unavailable. Upload an image file instead.'
       );
     }
   };
@@ -174,30 +175,23 @@ export const AddPillView: React.FC = () => {
 
   return (
     <section className="page-container">
-      <div style={{ marginBottom: '1.15rem' }}>
-        <h1 className="page-title">Add a Medication</h1>
+      <div className="mb-5">
+        <h1 className="page-title">Add a medication</h1>
         <p className="page-subtitle">
-          Snap or upload a photo of any prescription bottle or discharge paper.
-          We’ll read the label and check safety with your current pills.
+          Snap or upload a photo of a prescription bottle or discharge paper.
+          We&rsquo;ll read the label and check it against your current pills.
         </p>
       </div>
 
-      {/* Primary Capture Card */}
       <div className="harbor-card">
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '0.65rem',
-          }}
-        >
+        <div className="grid-2">
           <button
             type="button"
             className="btn-primary"
             onClick={handleOpenWebcam}
           >
             <Camera size={20} />
-            <span>Take Photo</span>
+            <span>Take photo</span>
           </button>
 
           <button
@@ -208,90 +202,73 @@ export const AddPillView: React.FC = () => {
               fileInputRef.current?.click();
             }}
           >
-            <ImagePlus size={20} color="var(--accent)" />
-            <span>Upload Photo</span>
+            <ImagePlus size={20} />
+            <span>Upload photo</span>
           </button>
 
           <input
             ref={fileInputRef}
+            id="bottle-upload"
             type="file"
             accept="image/*"
             onChange={handleFileSelected}
-            style={{ display: 'none' }}
+            hidden
           />
         </div>
 
-        {/* Collapsible Text / Sample Drawer */}
+        <hr className="divider" />
+
         <button
           type="button"
+          className="btn-ghost btn-ghost--wide btn-ghost--between"
           onClick={() => {
             triggerGentleFeedback();
             setManualOpen((v) => !v);
           }}
-          style={{
-            width: '100%',
-            marginTop: '1rem',
-            paddingTop: '0.75rem',
-            borderTop: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            color: 'var(--text-secondary)',
-            fontSize: '0.88rem',
-            fontWeight: 600,
-          }}
+          aria-expanded={manualOpen}
         >
           <span>No bottle nearby? Type a pill name or try a sample</span>
-          {manualOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {manualOpen ? (
+            <ChevronUp size={16} className="shrink-0" />
+          ) : (
+            <ChevronDown size={16} className="shrink-0" />
+          )}
         </button>
 
         {manualOpen && (
-          <div
-            style={{
-              marginTop: '0.85rem',
-              display: 'grid',
-              gap: '0.65rem',
-            }}
-          >
+          <div className="stack mt-3">
             <form
+              className="row-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!labelHint.trim()) return;
                 runGeminiScan({ hint: labelHint });
               }}
-              style={{ display: 'flex', gap: '0.5rem' }}
             >
               <input
                 type="text"
+                id="label-hint"
                 value={labelHint}
                 onChange={(e) => setLabelHint(e.target.value)}
-                placeholder="e.g., Metoprolol 25mg every morning"
+                placeholder="Metoprolol 25 mg every morning"
                 className="harbor-input"
               />
               <button
                 type="submit"
-                className="btn-primary"
-                style={{
-                  width: 'auto',
-                  padding: '0 1.25rem',
-                  background: 'var(--text-primary)',
-                }}
+                className="btn-primary btn-auto"
+                data-tone="neutral"
               >
                 Add
               </button>
             </form>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
+            <div className="row-wrap">
               {DEMO_LABELS.map((sample) => (
                 <button
                   key={sample.title}
                   type="button"
                   className="chip-pill"
-                  style={{
-                    background: 'var(--accent-soft)',
-                    borderColor: 'var(--accent-border)',
-                    color: 'var(--accent)',
-                  }}
+                  data-tone="accent"
                   onClick={() => {
                     triggerGentleFeedback();
                     setPreviewUrl(null);
@@ -308,160 +285,90 @@ export const AddPillView: React.FC = () => {
       </div>
 
       {previewUrl && (
-        <div
-          style={{
-            marginBottom: '1rem',
-            borderRadius: '20px',
-            overflow: 'hidden',
-            border: '1px solid var(--border)',
-          }}
-        >
-          <img
-            src={previewUrl}
-            alt="Prescription preview"
-            style={{
-              width: '100%',
-              maxHeight: 210,
-              objectFit: 'cover',
-              display: 'block',
-            }}
-          />
+        <div className="preview-frame">
+          <img src={previewUrl} alt="The prescription you just captured" />
         </div>
       )}
 
       {scanning && (
-        <div
-          className="harbor-card"
-          style={{
-            padding: '2rem',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '0.75rem',
-          }}
-        >
+        <div className="harbor-card harbor-card--pad-lg center-col stack-2">
           <div className="spinner" />
-          <div style={{ fontWeight: 600, fontSize: '0.96rem' }}>
-            Reading label & checking safety...
-          </div>
+          <div className="t-cap ink-2">Reading label and checking safety…</div>
         </div>
       )}
 
       {scanResult && !scanning && (
-        <div
-          className="harbor-card"
-          style={{ display: 'grid', gap: '0.9rem' }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '0.85rem',
-            }}
-          >
-            <div>
-              <h2 className="section-title" style={{ fontSize: '1.4rem' }}>
-                {scanResult.medication.name} ({scanResult.medication.dosage})
+        <div className="harbor-card stack">
+          <div className="row-between">
+            <div className="min-0">
+              <h2 className="dose-name">
+                {scanResult.medication.name} {scanResult.medication.dosage}
               </h2>
-              <div
-                style={{
-                  fontWeight: 600,
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.95rem',
-                  marginTop: '0.15rem',
-                }}
-              >
-                {scanResult.medication.genericName} •{' '}
+              <div className="dose-meta">
+                {scanResult.medication.genericName} ·{' '}
                 {scanResult.medication.timeWindows.join(' & ')}
               </div>
             </div>
-            <PillIllustration
-              visual={scanResult.medication.pillVisual}
-              size="md"
-            />
+            <div className="shrink-0">
+              <PillIllustration
+                visual={scanResult.medication.pillVisual}
+                size="md"
+              />
+            </div>
           </div>
 
-          <div style={{ fontSize: '0.98rem', color: 'var(--text-primary)' }}>
+          <div className="t-body">
             {scanResult.medication.plainEnglishPurpose}
           </div>
-          <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-            {scanResult.medication.foodRules}
-          </div>
+
+          <AuxLabel line={scanResult.medication.foodRules} kind="info" />
+
+          {scanResult.confidenceNote && (
+            <AuxLabel line={scanResult.confidenceNote} kind="caution" />
+          )}
 
           <button
             type="button"
+            className="btn-quiet"
+            data-active={speaking}
             onClick={handleReadSummary}
-            style={{
-              minHeight: 'var(--min-touch)',
-              borderRadius: '14px',
-              border: '1px solid var(--accent-border)',
-              background: speaking ? 'var(--accent)' : 'var(--accent-soft)',
-              color: speaking ? '#ffffff' : 'var(--accent)',
-              fontWeight: 700,
-              fontSize: '0.9rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-            }}
           >
             {speaking ? <Square size={16} /> : <Volume2 size={18} />}
-            <span>{speaking ? 'Stop Audio' : 'Listen Aloud'}</span>
+            <span>{speaking ? 'Stop audio' : 'Listen aloud'}</span>
           </button>
 
           {scanResult.safetyAlertsWithCurrentMeds.map((alert) => (
             <div
               key={alert.id}
-              className="alert-card"
+              className="alert-card stack-2"
               data-severity={alert.severity}
             >
-              <div
-                style={{
-                  fontWeight: 800,
-                  color:
-                    alert.severity === 'critical'
-                      ? 'var(--critical)'
-                      : 'var(--caution)',
-                  fontSize: '0.98rem',
-                }}
-              >
+              <div className="severity-head" data-severity={alert.severity}>
                 {alert.title}
               </div>
-              <div
-                style={{
-                  fontSize: '0.88rem',
-                  color: 'var(--text-primary)',
-                  marginTop: '0.25rem',
-                }}
-              >
-                {alert.plainExplanation}
-              </div>
+              <div className="t-cap ink">{alert.plainExplanation}</div>
             </div>
           ))}
 
           {savedBanner ? (
             <button
               type="button"
-              className="btn-primary btn-safe"
+              className="btn-primary"
+              data-tone="done"
               onClick={() => setActiveTab('today')}
             >
-              <CheckCircle2 size={20} />
-              <span>Saved — View Today’s Schedule</span>
+              <Check size={20} />
+              <span>Saved — open today&rsquo;s schedule</span>
             </button>
           ) : (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleSave}
-            >
-              Save to My Schedule
+            <button type="button" className="btn-primary" onClick={handleSave}>
+              Save to my schedule
             </button>
           )}
         </div>
       )}
 
-      {/* Webcam Modal */}
+      {/* Webcam */}
       {cameraModalOpen && (
         <div
           className="modal-backdrop"
@@ -469,21 +376,12 @@ export const AddPillView: React.FC = () => {
             stopCameraStream();
             setCameraModalOpen(false);
           }}
+          role="dialog"
+          aria-modal="true"
         >
-          <div
-            className="modal-card"
-            style={{ maxWidth: 540 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '0.85rem',
-              }}
-            >
-              <h3 className="section-title">Scan Prescription Bottle</h3>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="row-between mb-4">
+              <h3 className="section-title">Scan the bottle</h3>
               <button
                 type="button"
                 className="icon-circle-btn"
@@ -491,6 +389,7 @@ export const AddPillView: React.FC = () => {
                   stopCameraStream();
                   setCameraModalOpen(false);
                 }}
+                aria-label="Close the scanner"
               >
                 <X size={18} />
               </button>
@@ -498,38 +397,20 @@ export const AddPillView: React.FC = () => {
 
             {cameraError ? (
               <div className="alert-card" data-severity="caution">
-                <div style={{ fontSize: '0.92rem' }}>{cameraError}</div>
+                <div className="t-cap ink">{cameraError}</div>
               </div>
             ) : (
               <>
-                <div
-                  style={{
-                    borderRadius: '18px',
-                    overflow: 'hidden',
-                    background: '#0f172a',
-                    aspectRatio: '4 / 3',
-                  }}
-                >
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                    }}
-                  />
+                <div className="camera-frame">
+                  <video ref={videoRef} autoPlay playsInline muted />
                 </div>
                 <button
                   type="button"
-                  className="btn-primary"
-                  style={{ marginTop: '1rem' }}
+                  className="btn-primary mt-4"
                   onClick={handleCaptureWebcamFrame}
                 >
                   <Camera size={20} />
-                  <span>Capture & Read Label</span>
+                  <span>Capture and read label</span>
                 </button>
               </>
             )}
