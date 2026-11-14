@@ -31,18 +31,16 @@ import {
 
 const DEMO_LABELS = [
   {
-    title: 'Sample Bottle: Plavix 75 mg',
-    subtitle: 'Tests critical blood-thinner overlap detection',
+    title: 'Sample: Plavix 75 mg',
     hint: 'Rx Label: PLAVIX (clopidogrel) 75 MG tablet. Take 1 tablet by mouth every morning. Round pink tablet imprinted 75. Qty: 30.',
   },
   {
-    title: 'Hospital Discharge: Toprol-XL 25 mg',
-    subtitle: 'Tests morning blood-pressure beta-blocker parsing',
+    title: 'Sample: Toprol-XL 25 mg',
     hint: 'Discharge Medication: Toprol-XL (metoprolol succinate ER) 25 mg extended-release oval white tablet imprinted A MO. Take 1 tablet daily with morning meal. Qty: 30.',
   },
 ];
 
-export default function ScanPrescriptionScreen() {
+export default function AddPillScreen() {
   const theme = useHarborTheme();
   const router = useRouter();
   const activeProfile = useActiveProfile();
@@ -54,6 +52,7 @@ export default function ScanPrescriptionScreen() {
   const cameraRef = useRef<CameraView | null>(null);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
 
+  const [manualOpen, setManualOpen] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [labelHint, setLabelHint] = useState('');
   const [scanning, setScanning] = useState(false);
@@ -151,7 +150,7 @@ export default function ScanPrescriptionScreen() {
       setSpeaking(false);
       return;
     }
-    const text = `${scanResult.medication.name}, ${scanResult.medication.dosage}. ${scanResult.medication.plainEnglishPurpose} ${scanResult.medication.foodRules} ${scanResult.calmOnboardingTip}`;
+    const text = `${scanResult.medication.name}, ${scanResult.medication.dosage}. ${scanResult.medication.plainEnglishPurpose} ${scanResult.medication.foodRules}`;
     setSpeaking(true);
     await playCalmReadout(text, () => setSpeaking(false));
   };
@@ -165,26 +164,17 @@ export default function ScanPrescriptionScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header Card */}
-      <View
-        style={[
-          styles.heroCard,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.xl,
-            padding: theme.spacing.lg,
-          },
-        ]}
-      >
+      <View style={styles.maxWidthWrap}>
         <Text
           style={{
-            fontSize: theme.font.title,
+            fontSize: theme.font.hero,
+            lineHeight: theme.lineHeight.hero,
             fontWeight: '800',
             color: theme.colors.textPrimary,
+            letterSpacing: -0.5,
           }}
         >
-          Scan Bottle or Discharge Sheet
+          Add a Medication
         </Text>
         <Text
           style={{
@@ -192,231 +182,17 @@ export default function ScanPrescriptionScreen() {
             lineHeight: theme.lineHeight.body,
             color: theme.colors.textSecondary,
             marginTop: 6,
+            marginBottom: 18,
           }}
         >
-          Gemini reads fine-print pharmacy labels for{' '}
-          <Text style={{ fontWeight: '700', color: theme.colors.textPrimary }}>
-            {activeProfile.name.split(' ')[0]}
-          </Text>
-          , builds a visual pill match, and checks interactions automatically.
+          Snap a photo of any prescription bottle or discharge paper. We’ll read
+          the label and check safety with your current pills.
         </Text>
 
-        {/* Primary Capture Buttons */}
-        <View style={styles.captureRow}>
-          <Pressable
-            onPress={handleOpenCamera}
-            style={({ pressed }) => [
-              styles.primaryActionBtn,
-              {
-                minHeight: Math.max(theme.minTouchTarget, 58),
-                backgroundColor: theme.colors.accentPrimary,
-                opacity: pressed ? 0.9 : 1,
-              },
-            ]}
-          >
-            <Ionicons name="camera-outline" size={22} color={theme.colors.white} />
-            <Text
-              style={{
-                fontSize: theme.font.body,
-                fontWeight: '700',
-                color: theme.colors.white,
-              }}
-            >
-              Open Camera
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={handlePickImage}
-            style={({ pressed }) => [
-              styles.secondaryActionBtn,
-              {
-                minHeight: Math.max(theme.minTouchTarget, 58),
-                backgroundColor: theme.colors.backgroundPrimary,
-                borderColor: theme.colors.borderStrong,
-                opacity: pressed ? 0.88 : 1,
-              },
-            ]}
-          >
-            <Ionicons
-              name="images-outline"
-              size={22}
-              color={theme.colors.accentPrimary}
-            />
-            <Text
-              style={{
-                fontSize: theme.font.body,
-                fontWeight: '700',
-                color: theme.colors.textPrimary,
-              }}
-            >
-              Photo Library
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Optional Label Text / Note Input */}
-        {theme.showSecondaryMetadata && (
-          <View style={{ marginTop: 16, gap: 8 }}>
-            <Text
-              style={{
-                fontSize: theme.font.xs,
-                fontWeight: '700',
-                color: theme.colors.textSecondary,
-                textTransform: 'uppercase',
-              }}
-            >
-              Or paste / type a label note for Gemini
-            </Text>
-            <View style={styles.hintRow}>
-              <TextInput
-                value={labelHint}
-                onChangeText={setLabelHint}
-                placeholder="e.g., Metoprolol ER 25mg every morning..."
-                placeholderTextColor={theme.colors.textMuted}
-                style={[
-                  styles.input,
-                  {
-                    minHeight: theme.minTouchTarget,
-                    fontSize: theme.font.sm,
-                    color: theme.colors.textPrimary,
-                    backgroundColor: theme.colors.backgroundPrimary,
-                    borderColor: theme.colors.border,
-                  },
-                ]}
-              />
-              <Pressable
-                onPress={() => {
-                  if (!labelHint.trim()) return;
-                  triggerSoftImpactHaptic();
-                  runGeminiScan({ hint: labelHint });
-                }}
-                style={[
-                  styles.parseBtn,
-                  {
-                    minHeight: theme.minTouchTarget,
-                    backgroundColor: theme.colors.textPrimary,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    fontSize: theme.font.sm,
-                    fontWeight: '700',
-                    color: theme.colors.white,
-                  }}
-                >
-                  Parse
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* Instant Demo Sample Presets (great for simulator / web testing) */}
-      <View style={styles.sampleSection}>
-        <Text
-          style={{
-            fontSize: theme.font.xs,
-            fontWeight: '700',
-            color: theme.colors.textSecondary,
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-            marginBottom: 8,
-          }}
-        >
-          Instant Demo Bottle & Discharge Samples
-        </Text>
-        {DEMO_LABELS.map((sample) => (
-          <Pressable
-            key={sample.title}
-            onPress={() => {
-              triggerSoftImpactHaptic();
-              setPreviewUri(null);
-              setLabelHint(sample.hint);
-              runGeminiScan({ hint: sample.hint });
-            }}
-            style={[
-              styles.sampleCard,
-              {
-                minHeight: theme.minTouchTarget,
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
-              },
-            ]}
-          >
-            <Ionicons
-              name="sparkles-outline"
-              size={20}
-              color={theme.colors.accentPrimary}
-            />
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: theme.font.body,
-                  fontWeight: '700',
-                  color: theme.colors.textPrimary,
-                }}
-              >
-                {sample.title}
-              </Text>
-              {theme.showSecondaryMetadata && (
-                <Text
-                  style={{
-                    fontSize: theme.font.xs,
-                    color: theme.colors.textSecondary,
-                    marginTop: 2,
-                  }}
-                >
-                  {sample.subtitle}
-                </Text>
-              )}
-            </View>
-            <Ionicons
-              name="arrow-forward-circle-outline"
-              size={22}
-              color={theme.colors.accentPrimary}
-            />
-          </Pressable>
-        ))}
-      </View>
-
-      {/* Image Preview */}
-      {previewUri && (
-        <Image source={{ uri: previewUri }} style={styles.imagePreview} />
-      )}
-
-      {/* Loading Indicator */}
-      {scanning && (
+        {/* Clean Two-Button Camera Card */}
         <View
           style={[
-            styles.loadingCard,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <ActivityIndicator size="large" color={theme.colors.accentPrimary} />
-          <Text
-            style={{
-              fontSize: theme.font.body,
-              fontWeight: '700',
-              color: theme.colors.textPrimary,
-              marginTop: 12,
-            }}
-          >
-            Gemini is reading label & checking interactions...
-          </Text>
-        </View>
-      )}
-
-      {/* Parsed Gemini Result Card */}
-      {scanResult && !scanning && (
-        <View
-          style={[
-            styles.resultCard,
+            styles.card,
             {
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
@@ -425,85 +201,238 @@ export default function ScanPrescriptionScreen() {
             },
           ]}
         >
-          <View style={styles.resultTopRow}>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: theme.font.xs,
-                  fontWeight: '700',
-                  color: theme.colors.accentPrimary,
-                  textTransform: 'uppercase',
-                }}
-              >
-                Parsed by {scanResult.modelUsed}
-              </Text>
-              <Text
-                style={{
-                  fontSize: theme.font.title,
-                  fontWeight: '800',
-                  color: theme.colors.textPrimary,
-                  marginTop: 4,
-                }}
-              >
-                {scanResult.medication.name} ({scanResult.medication.dosage})
-              </Text>
+          <View style={styles.captureRow}>
+            <Pressable
+              onPress={handleOpenCamera}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                {
+                  minHeight: Math.max(theme.minTouchTarget, 58),
+                  backgroundColor: theme.colors.accentPrimary,
+                  opacity: pressed ? 0.9 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name="camera-outline"
+                size={22}
+                color={theme.colors.white}
+              />
               <Text
                 style={{
                   fontSize: theme.font.body,
-                  color: theme.colors.textSecondary,
-                  fontWeight: '600',
+                  fontWeight: '700',
+                  color: theme.colors.white,
                 }}
               >
-                {scanResult.medication.genericName} •{' '}
-                {scanResult.medication.timeWindows.join(' & ')}
+                Take Photo
               </Text>
-            </View>
-            <PillIllustration
-              visual={scanResult.medication.pillVisual}
-              size="md"
-            />
+            </Pressable>
+
+            <Pressable
+              onPress={handlePickImage}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                {
+                  minHeight: Math.max(theme.minTouchTarget, 58),
+                  backgroundColor: theme.colors.backgroundPrimary,
+                  borderColor: theme.colors.borderStrong,
+                  opacity: pressed ? 0.88 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name="image-outline"
+                size={22}
+                color={theme.colors.accentPrimary}
+              />
+              <Text
+                style={{
+                  fontSize: theme.font.body,
+                  fontWeight: '700',
+                  color: theme.colors.textPrimary,
+                }}
+              >
+                Upload Photo
+              </Text>
+            </Pressable>
           </View>
 
+          {/* Progressive Disclosure for Typing / Demo Samples */}
           <Pressable
-            onPress={handleReadSummary}
-            style={[
-              styles.listenBtn,
-              {
-                minHeight: theme.minTouchTarget,
-                backgroundColor: speaking
-                  ? theme.colors.accentPrimary
-                  : theme.colors.accentSoft,
-                borderColor: theme.colors.accentBorder,
-              },
-            ]}
+            onPress={() => {
+              triggerSoftImpactHaptic();
+              setManualOpen((v) => !v);
+            }}
+            style={styles.manualToggle}
           >
-            <Ionicons
-              name={speaking ? 'stop-circle-outline' : 'volume-high-outline'}
-              size={20}
-              color={speaking ? theme.colors.white : theme.colors.accentPrimary}
-            />
             <Text
               style={{
                 fontSize: theme.font.sm,
-                fontWeight: '700',
-                color: speaking
-                  ? theme.colors.white
-                  : theme.colors.accentPrimary,
+                fontWeight: '600',
+                color: theme.colors.textSecondary,
               }}
             >
-              {speaking ? 'Stop Reading' : 'Read Plain-English Guide Aloud'}
+              No bottle nearby? Type a pill name or try a sample
             </Text>
+            <Ionicons
+              name={manualOpen ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={theme.colors.textSecondary}
+            />
           </Pressable>
 
+          {manualOpen && (
+            <View style={styles.manualDrawer}>
+              <View style={styles.hintRow}>
+                <TextInput
+                  value={labelHint}
+                  onChangeText={setLabelHint}
+                  onSubmitEditing={() => {
+                    if (labelHint.trim()) runGeminiScan({ hint: labelHint });
+                  }}
+                  placeholder="e.g., Metoprolol 25mg every morning"
+                  placeholderTextColor={theme.colors.textMuted}
+                  style={[
+                    styles.input,
+                    {
+                      minHeight: theme.minTouchTarget,
+                      fontSize: theme.font.sm,
+                      color: theme.colors.textPrimary,
+                      backgroundColor: theme.colors.backgroundPrimary,
+                      borderColor: theme.colors.border,
+                    },
+                  ]}
+                />
+                <Pressable
+                  onPress={() => {
+                    if (!labelHint.trim()) return;
+                    triggerSoftImpactHaptic();
+                    runGeminiScan({ hint: labelHint });
+                  }}
+                  style={[
+                    styles.parseBtn,
+                    {
+                      minHeight: theme.minTouchTarget,
+                      backgroundColor: theme.colors.textPrimary,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: theme.font.sm,
+                      fontWeight: '700',
+                      color: theme.colors.white,
+                    }}
+                  >
+                    Add
+                  </Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.sampleRow}>
+                {DEMO_LABELS.map((sample) => (
+                  <Pressable
+                    key={sample.title}
+                    onPress={() => {
+                      triggerSoftImpactHaptic();
+                      setPreviewUri(null);
+                      setLabelHint(sample.hint);
+                      runGeminiScan({ hint: sample.hint });
+                    }}
+                    style={[
+                      styles.sampleChip,
+                      {
+                        minHeight: theme.brainFogMode ? 64 : 40,
+                        backgroundColor: theme.colors.accentSoft,
+                        borderColor: theme.colors.accentBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        fontSize: theme.font.xs,
+                        fontWeight: '700',
+                        color: theme.colors.accentPrimary,
+                      }}
+                    >
+                      {sample.title}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+
+        {previewUri && (
+          <Image source={{ uri: previewUri }} style={styles.imagePreview} />
+        )}
+
+        {scanning && (
           <View
             style={[
-              styles.detailBox,
+              styles.loadingCard,
               {
-                backgroundColor: theme.colors.backgroundPrimary,
+                backgroundColor: theme.colors.surface,
                 borderColor: theme.colors.border,
               },
             ]}
           >
+            <ActivityIndicator size="large" color={theme.colors.accentPrimary} />
+            <Text
+              style={{
+                fontSize: theme.font.body,
+                fontWeight: '600',
+                color: theme.colors.textPrimary,
+                marginTop: 12,
+              }}
+            >
+              Reading label & checking safety...
+            </Text>
+          </View>
+        )}
+
+        {scanResult && !scanning && (
+          <View
+            style={[
+              styles.resultCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.xl,
+                padding: theme.spacing.lg,
+              },
+            ]}
+          >
+            <View style={styles.resultTopRow}>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: theme.font.title,
+                    fontWeight: '800',
+                    color: theme.colors.textPrimary,
+                  }}
+                >
+                  {scanResult.medication.name} ({scanResult.medication.dosage})
+                </Text>
+                <Text
+                  style={{
+                    fontSize: theme.font.body,
+                    color: theme.colors.textSecondary,
+                    fontWeight: '600',
+                    marginTop: 2,
+                  }}
+                >
+                  {scanResult.medication.timeWindows.join(' & ')}
+                </Text>
+              </View>
+              <PillIllustration
+                visual={scanResult.medication.pillVisual}
+                size="md"
+              />
+            </View>
+
             <Text
               style={{
                 fontSize: theme.font.body,
@@ -511,164 +440,176 @@ export default function ScanPrescriptionScreen() {
                 color: theme.colors.textPrimary,
               }}
             >
-              <Text style={{ fontWeight: '700' }}>What it does: </Text>
               {scanResult.medication.plainEnglishPurpose}
             </Text>
+
             <Text
               style={{
                 fontSize: theme.font.sm,
-                lineHeight: theme.lineHeight.sm,
                 color: theme.colors.textSecondary,
-                marginTop: 8,
               }}
             >
-              <Text style={{ fontWeight: '700', color: theme.colors.textPrimary }}>
-                Food rule:{' '}
-              </Text>
               {scanResult.medication.foodRules}
             </Text>
-          </View>
 
-          {/* Interaction Alerts with Current Regimen */}
-          {scanResult.safetyAlertsWithCurrentMeds.map((alert) => {
-            const isCrit = alert.severity === 'critical';
-            return (
-              <View
-                key={alert.id}
+            <Pressable
+              onPress={handleReadSummary}
+              style={[
+                styles.listenBtn,
+                {
+                  minHeight: theme.minTouchTarget,
+                  backgroundColor: speaking
+                    ? theme.colors.accentPrimary
+                    : theme.colors.accentSoft,
+                  borderColor: theme.colors.accentBorder,
+                },
+              ]}
+            >
+              <Ionicons
+                name={speaking ? 'stop-circle-outline' : 'volume-high-outline'}
+                size={20}
+                color={
+                  speaking ? theme.colors.white : theme.colors.accentPrimary
+                }
+              />
+              <Text
+                style={{
+                  fontSize: theme.font.sm,
+                  fontWeight: '700',
+                  color: speaking
+                    ? theme.colors.white
+                    : theme.colors.accentPrimary,
+                }}
+              >
+                {speaking ? 'Stop Audio' : 'Listen Aloud'}
+              </Text>
+            </Pressable>
+
+            {scanResult.safetyAlertsWithCurrentMeds.map((alert) => {
+              const isCrit = alert.severity === 'critical';
+              return (
+                <View
+                  key={alert.id}
+                  style={[
+                    styles.alertBox,
+                    {
+                      backgroundColor: isCrit
+                        ? theme.colors.criticalSoft
+                        : theme.colors.cautionSoft,
+                      borderColor: isCrit
+                        ? theme.colors.criticalBorder
+                        : theme.colors.cautionBorder,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: theme.font.body,
+                      fontWeight: '800',
+                      color: isCrit
+                        ? theme.colors.critical
+                        : theme.colors.caution,
+                    }}
+                  >
+                    {alert.title}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: theme.font.sm,
+                      lineHeight: theme.lineHeight.sm,
+                      color: theme.colors.textPrimary,
+                      marginTop: 4,
+                    }}
+                  >
+                    {alert.plainExplanation}
+                  </Text>
+                </View>
+              );
+            })}
+
+            {savedBanner ? (
+              <Pressable
+                onPress={() => router.push('/(tabs)')}
                 style={[
-                  styles.alertBox,
+                  styles.saveBtn,
                   {
-                    backgroundColor: isCrit
-                      ? theme.colors.criticalSoft
-                      : theme.colors.cautionSoft,
-                    borderColor: isCrit
-                      ? theme.colors.criticalBorder
-                      : theme.colors.cautionBorder,
+                    minHeight: Math.max(theme.minTouchTarget, 56),
+                    backgroundColor: theme.colors.safe,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="checkmark-circle"
+                  size={22}
+                  color={theme.colors.white}
+                />
+                <Text
+                  style={{
+                    fontSize: theme.font.bodyLg,
+                    fontWeight: '700',
+                    color: theme.colors.white,
+                  }}
+                >
+                  Saved — View Today’s Schedule
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={handleSaveMedication}
+                style={[
+                  styles.saveBtn,
+                  {
+                    minHeight: Math.max(theme.minTouchTarget, 56),
+                    backgroundColor: theme.colors.accentPrimary,
                   },
                 ]}
               >
                 <Text
                   style={{
-                    fontSize: theme.font.body,
-                    fontWeight: '800',
-                    color: isCrit
-                      ? theme.colors.critical
-                      : theme.colors.caution,
-                  }}
-                >
-                  {alert.title}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: theme.font.sm,
-                    lineHeight: theme.lineHeight.sm,
-                    color: theme.colors.textPrimary,
-                    marginTop: 4,
-                  }}
-                >
-                  {alert.plainExplanation}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: theme.font.sm,
+                    fontSize: theme.font.bodyLg,
                     fontWeight: '700',
-                    color: theme.colors.textPrimary,
-                    marginTop: 6,
+                    color: theme.colors.white,
                   }}
                 >
-                  Next step: {alert.actionableStep}
+                  Save to My Schedule
                 </Text>
-              </View>
-            );
-          })}
-
-          {savedBanner ? (
-            <Pressable
-              onPress={() => router.push('/(tabs)')}
-              style={[
-                styles.saveBtn,
-                {
-                  minHeight: Math.max(theme.minTouchTarget, 58),
-                  backgroundColor: theme.colors.safe,
-                },
-              ]}
-            >
-              <Ionicons
-                name="checkmark-circle"
-                size={22}
-                color={theme.colors.white}
-              />
-              <Text
-                style={{
-                  fontSize: theme.font.bodyLg,
-                  fontWeight: '700',
-                  color: theme.colors.white,
-                }}
-              >
-                Added to {activeProfile.name.split(' ')[0]}’s Harbor — View Schedule
-              </Text>
-            </Pressable>
-          ) : (
-            <Pressable
-              onPress={handleSaveMedication}
-              style={[
-                styles.saveBtn,
-                {
-                  minHeight: Math.max(theme.minTouchTarget, 58),
-                  backgroundColor: theme.colors.accentPrimary,
-                },
-              ]}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={22}
-                color={theme.colors.white}
-              />
-              <Text
-                style={{
-                  fontSize: theme.font.bodyLg,
-                  fontWeight: '700',
-                  color: theme.colors.white,
-                }}
-              >
-                Add to {activeProfile.name.split(' ')[0]}’s Daily Harbor
-              </Text>
-            </Pressable>
-          )}
-        </View>
-      )}
-
-      {/* Live Camera Viewfinder Modal */}
-      <Modal
-        visible={cameraModalOpen}
-        animationType="slide"
-        onRequestClose={() => setCameraModalOpen(false)}
-      >
-        <View style={styles.cameraFullscreen}>
-          <CameraView ref={cameraRef} style={styles.cameraView} facing="back" />
-          <View style={styles.cameraControls}>
-            <Pressable
-              onPress={() => setCameraModalOpen(false)}
-              style={[
-                styles.cameraCancelBtn,
-                { minHeight: theme.minTouchTarget },
-              ]}
-            >
-              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16 }}>
-                Cancel
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={handleCapturePhoto}
-              style={styles.shutterOuter}
-              accessibilityLabel="Capture prescription bottle photo"
-            >
-              <View style={styles.shutterInner} />
-            </Pressable>
-            <View style={{ width: 70 }} />
+              </Pressable>
+            )}
           </View>
-        </View>
-      </Modal>
+        )}
+
+        <Modal
+          visible={cameraModalOpen}
+          animationType="slide"
+          onRequestClose={() => setCameraModalOpen(false)}
+        >
+          <View style={styles.cameraFullscreen}>
+            <CameraView ref={cameraRef} style={styles.cameraView} facing="back" />
+            <View style={styles.cameraControls}>
+              <Pressable
+                onPress={() => setCameraModalOpen(false)}
+                style={[
+                  styles.cameraCancelBtn,
+                  { minHeight: theme.minTouchTarget },
+                ]}
+              >
+                <Text
+                  style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16 }}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleCapturePhoto}
+                style={styles.shutterOuter}
+              >
+                <View style={styles.shutterInner} />
+              </Pressable>
+              <View style={{ width: 70 }} />
+            </View>
+          </View>
+        </Modal>
+      </View>
     </ScrollView>
   );
 }
@@ -679,27 +620,30 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 18,
-    paddingBottom: 44,
+    paddingBottom: 124,
   },
-  heroCard: {
+  maxWidthWrap: {
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
+  },
+  card: {
     borderWidth: 1,
     marginBottom: 18,
   },
   captureRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 16,
   },
-  primaryActionBtn: {
+  primaryBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     borderRadius: 16,
-    paddingHorizontal: 12,
   },
-  secondaryActionBtn: {
+  secondaryBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -707,7 +651,17 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 16,
     borderWidth: 1.5,
-    paddingHorizontal: 12,
+  },
+  manualToggle: {
+    marginTop: 16,
+    paddingTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  manualDrawer: {
+    marginTop: 12,
+    gap: 10,
   },
   hintRow: {
     flexDirection: 'row',
@@ -725,21 +679,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sampleSection: {
-    marginBottom: 18,
+  sampleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
-  sampleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 16,
+  sampleChip: {
+    paddingHorizontal: 12,
+    borderRadius: 999,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   imagePreview: {
     width: '100%',
-    height: 190,
+    height: 180,
     borderRadius: 20,
     marginBottom: 16,
   },
@@ -749,11 +703,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
   },
   resultCard: {
     borderWidth: 1,
-    gap: 14,
+    gap: 12,
   },
   resultTopRow: {
     flexDirection: 'row',
@@ -768,11 +721,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
   },
-  detailBox: {
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
   alertBox: {
     padding: 14,
     borderRadius: 16,
@@ -782,9 +730,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
     borderRadius: 16,
-    paddingHorizontal: 16,
     marginTop: 4,
   },
   cameraFullscreen: {

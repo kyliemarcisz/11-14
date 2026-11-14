@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { TimeWindow } from '@shared/types';
+import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
   Pressable,
@@ -19,10 +20,12 @@ import {
   useHarborTheme,
 } from '../../src/store/useHarborStore';
 
-export default function HarborTodayScreen() {
+export default function TodayScreen() {
+  const router = useRouter();
   const theme = useHarborTheme();
   const activeProfile = useActiveProfile();
   const allLogs = useHarborStore((s) => s.doseLogs);
+  const loadSampleProfiles = useHarborStore((s) => s.loadSampleProfiles);
 
   const [selectedWindow, setSelectedWindow] = useState<TimeWindow>(() => {
     const suggested = getSuggestedTimeWindow();
@@ -57,9 +60,6 @@ export default function HarborTodayScreen() {
     [activeProfile.medications, selectedWindow]
   );
 
-  const selectedWindowMeta =
-    TIME_WINDOWS.find((w) => w.key === selectedWindow) || TIME_WINDOWS[0];
-
   const progressRatio =
     totalScheduledToday > 0
       ? Math.min(1, todayLogs.length / totalScheduledToday)
@@ -74,298 +74,261 @@ export default function HarborTodayScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Calm Hero Summary Card */}
-      <View
-        style={[
-          styles.heroCard,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.xl,
-            padding: theme.spacing.lg,
-          },
-        ]}
-      >
-        <Text
-          style={{
-            fontSize: theme.font.hero,
-            lineHeight: theme.lineHeight.hero,
-            fontWeight: '800',
-            color: theme.colors.textPrimary,
-            letterSpacing: -0.5,
-          }}
-        >
-          One calm window at a time, {activeProfile.name.split(' ')[0]}.
-        </Text>
-
-        {theme.showSecondaryMetadata && (
+      <View style={styles.maxWidthWrap}>
+        {/* Clean Minimal Title + Calm Progress */}
+        <View style={styles.topHeader}>
           <Text
             style={{
-              fontSize: theme.font.body,
-              lineHeight: theme.lineHeight.body,
-              color: theme.colors.textSecondary,
-              marginTop: 6,
+              fontSize: theme.font.hero,
+              lineHeight: theme.lineHeight.hero,
+              fontWeight: '800',
+              color: theme.colors.textPrimary,
+              letterSpacing: -0.5,
             }}
           >
-            Every logged dose locks a physical memory anchor so you never have
-            to second-guess whether you already took a pill.
+            {selectedWindow} Pills
           </Text>
-        )}
 
-        {/* Serene Progress Bar */}
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <Text
-              style={{
-                fontSize: theme.font.sm,
-                fontWeight: '700',
-                color: theme.colors.accentPrimary,
-              }}
-            >
-              {todayLogs.length} of {totalScheduledToday} daily doses anchored
-            </Text>
-            {todayLogs.length === totalScheduledToday &&
-              totalScheduledToday > 0 && (
-                <Text
-                  style={{
-                    fontSize: theme.font.xs,
-                    fontWeight: '700',
-                    color: theme.colors.safe,
-                  }}
-                >
-                  All complete today
-                </Text>
-              )}
-          </View>
+          {totalScheduledToday > 0 && (
+            <View style={styles.progressWrap}>
+              <Text
+                style={{
+                  fontSize: theme.font.sm,
+                  fontWeight: '600',
+                  color: theme.colors.textSecondary,
+                }}
+              >
+                {todayLogs.length} of {totalScheduledToday} taken today
+              </Text>
+              <View
+                style={[
+                  styles.progressTrack,
+                  { backgroundColor: theme.colors.backgroundSecondary },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.round(progressRatio * 100)}%`,
+                      backgroundColor:
+                        progressRatio >= 1
+                          ? theme.colors.safe
+                          : theme.colors.accentPrimary,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Empty Fresh Profile State */}
+        {activeProfile.medications.length === 0 ? (
           <View
             style={[
-              styles.progressTrack,
-              { backgroundColor: theme.colors.backgroundSecondary },
+              styles.emptyScheduleCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
             ]}
           >
             <View
               style={[
-                styles.progressFill,
+                styles.emptyIconCircle,
+                { backgroundColor: theme.colors.accentSoft },
+              ]}
+            >
+              <Ionicons
+                name="camera-outline"
+                size={28}
+                color={theme.colors.accentPrimary}
+              />
+            </View>
+            <Text
+              style={{
+                fontSize: theme.font.title,
+                fontWeight: '800',
+                color: theme.colors.textPrimary,
+                marginTop: 14,
+                textAlign: 'center',
+              }}
+            >
+              Your schedule is ready
+            </Text>
+            <Text
+              style={{
+                fontSize: theme.font.body,
+                lineHeight: theme.lineHeight.body,
+                color: theme.colors.textSecondary,
+                marginTop: 6,
+                textAlign: 'center',
+              }}
+            >
+              Snap a photo of your first pill bottle and we’ll set up its
+              time of day and visual match automatically.
+            </Text>
+
+            <Pressable
+              onPress={() => router.push('/(tabs)/scan')}
+              style={[
+                styles.emptyPrimaryBtn,
                 {
-                  width: `${Math.round(progressRatio * 100)}%`,
-                  backgroundColor:
-                    progressRatio >= 1
-                      ? theme.colors.safe
-                      : theme.colors.accentPrimary,
+                  minHeight: Math.max(theme.minTouchTarget, 56),
+                  backgroundColor: theme.colors.accentPrimary,
                 },
               ]}
-            />
-          </View>
-        </View>
-      </View>
-
-      {/* Time Window Selector */}
-      <View style={styles.windowSection}>
-        <Text
-          style={{
-            fontSize: theme.font.sm,
-            fontWeight: '700',
-            color: theme.colors.textSecondary,
-            marginBottom: 10,
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-          }}
-        >
-          Choose Time Window
-        </Text>
-
-        <View style={styles.windowGrid}>
-          {TIME_WINDOWS.map((win) => {
-            const medsForWin = activeProfile.medications.filter((m) =>
-              m.timeWindows.includes(win.key)
-            );
-            const takenForWin = medsForWin.filter((m) =>
-              todayLogs.some(
-                (l) => l.medicationId === m.id && l.timeWindow === win.key
-              )
-            );
-            const isSelected = selectedWindow === win.key;
-            const allDone =
-              medsForWin.length > 0 && takenForWin.length === medsForWin.length;
-
-            return (
-              <Pressable
-                key={win.key}
-                onPress={() => {
-                  triggerSoftImpactHaptic();
-                  setSelectedWindow(win.key);
+            >
+              <Ionicons name="add" size={22} color={theme.colors.white} />
+              <Text
+                style={{
+                  fontSize: theme.font.bodyLg,
+                  fontWeight: '700',
+                  color: theme.colors.white,
                 }}
+              >
+                Add First Medication
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                triggerSoftImpactHaptic();
+                loadSampleProfiles();
+              }}
+              style={{ marginTop: 14, paddingVertical: 8 }}
+            >
+              <Text
+                style={{
+                  fontSize: theme.font.sm,
+                  fontWeight: '600',
+                  color: theme.colors.accentPrimary,
+                }}
+              >
+                Or load sample prescriptions to explore
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            {/* Clean Segmented Time Selector */}
+            <View
+              style={[
+                styles.segmentedBar,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                },
+              ]}
+            >
+              {TIME_WINDOWS.map((win) => {
+                const medsForWin = activeProfile.medications.filter((m) =>
+                  m.timeWindows.includes(win.key)
+                );
+                const allDone =
+                  medsForWin.length > 0 &&
+                  medsForWin.every((m) =>
+                    todayLogs.some(
+                      (l) => l.medicationId === m.id && l.timeWindow === win.key
+                    )
+                  );
+                const selected = selectedWindow === win.key;
+
+                return (
+                  <Pressable
+                    key={win.key}
+                    onPress={() => {
+                      triggerSoftImpactHaptic();
+                      setSelectedWindow(win.key);
+                    }}
+                    style={[
+                      styles.segmentBtn,
+                      {
+                        minHeight: theme.brainFogMode ? 64 : 42,
+                        backgroundColor: selected
+                          ? theme.colors.accentPrimary
+                          : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        fontSize: theme.font.sm,
+                        fontWeight: '700',
+                        color: selected
+                          ? theme.colors.white
+                          : medsForWin.length === 0
+                            ? theme.colors.textMuted
+                            : theme.colors.textPrimary,
+                      }}
+                    >
+                      {win.label}
+                      {allDone ? ' ✓' : ''}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Medication Cards */}
+            {windowMeds.length === 0 ? (
+              <View
                 style={[
-                  styles.windowTab,
+                  styles.restCard,
                   {
-                    minHeight: theme.minTouchTarget,
-                    backgroundColor: isSelected
-                      ? theme.colors.accentPrimary
-                      : theme.colors.surface,
-                    borderColor: isSelected
-                      ? theme.colors.accentPrimary
-                      : allDone
-                        ? theme.colors.safeBorder
-                        : theme.colors.border,
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
                   },
                 ]}
               >
+                <Ionicons
+                  name="cafe-outline"
+                  size={28}
+                  color={theme.colors.accentPrimary}
+                />
+                <Text
+                  style={{
+                    fontSize: theme.font.bodyLg,
+                    fontWeight: '700',
+                    color: theme.colors.textPrimary,
+                    marginTop: 8,
+                  }}
+                >
+                  No pills in the {selectedWindow}
+                </Text>
                 <Text
                   style={{
                     fontSize: theme.font.sm,
-                    fontWeight: '700',
-                    color: isSelected
-                      ? theme.colors.white
-                      : theme.colors.textPrimary,
-                  }}
-                >
-                  {win.label}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: theme.font.xs,
-                    fontWeight: '600',
-                    color: isSelected
-                      ? 'rgba(255,255,255,0.88)'
-                      : allDone
-                        ? theme.colors.safe
-                        : theme.colors.textSecondary,
+                    color: theme.colors.textSecondary,
                     marginTop: 2,
                   }}
                 >
-                  {medsForWin.length === 0
-                    ? 'Rest'
-                    : allDone
-                      ? `✓ ${medsForWin.length} done`
-                      : `${takenForWin.length}/${medsForWin.length} ready`}
+                  Tap another time of day above whenever you need it.
                 </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* Active Window Heading */}
-      <View style={styles.activeWindowHeader}>
-        <Text
-          style={{
-            fontSize: theme.font.subtitle,
-            fontWeight: '800',
-            color: theme.colors.textPrimary,
-          }}
-        >
-          {selectedWindowMeta.label} Window
-        </Text>
-        {theme.showSecondaryMetadata && (
-          <Text
-            style={{
-              fontSize: theme.font.sm,
-              color: theme.colors.textSecondary,
-              marginTop: 2,
-            }}
-          >
-            {selectedWindowMeta.timeRange} • {selectedWindowMeta.gentleCue}
-          </Text>
+              </View>
+            ) : (
+              windowMeds.map((med, idx) => {
+                const logForWindow = todayLogs.find(
+                  (l) =>
+                    l.medicationId === med.id && l.timeWindow === selectedWindow
+                );
+                return (
+                  <DoseCard
+                    key={med.id}
+                    medication={med}
+                    patient={activeProfile}
+                    timeWindow={selectedWindow}
+                    existingLog={logForWindow}
+                    todayLogs={todayLogs}
+                    index={idx}
+                  />
+                );
+              })
+            )}
+          </>
         )}
       </View>
-
-      {/* Medication Cards */}
-      {windowMeds.length === 0 ? (
-        <View
-          style={[
-            styles.emptyWindowCard,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <Ionicons
-            name="cafe-outline"
-            size={32}
-            color={theme.colors.accentPrimary}
-          />
-          <Text
-            style={{
-              fontSize: theme.font.bodyLg,
-              fontWeight: '700',
-              color: theme.colors.textPrimary,
-              marginTop: 10,
-              textAlign: 'center',
-            }}
-          >
-            Nothing scheduled in the {selectedWindow} window
-          </Text>
-          <Text
-            style={{
-              fontSize: theme.font.sm,
-              color: theme.colors.textSecondary,
-              marginTop: 4,
-              textAlign: 'center',
-            }}
-          >
-            Enjoy a calm pause—your other time windows are ready above whenever
-            needed.
-          </Text>
-        </View>
-      ) : (
-        windowMeds.map((med, idx) => {
-          const logForWindow = todayLogs.find(
-            (l) => l.medicationId === med.id && l.timeWindow === selectedWindow
-          );
-          return (
-            <DoseCard
-              key={med.id}
-              medication={med}
-              patient={activeProfile}
-              timeWindow={selectedWindow}
-              existingLog={logForWindow}
-              todayLogs={todayLogs}
-              index={idx}
-            />
-          );
-        })
-      )}
-
-      {/* Environmental Care Cue Card (hidden in Brain-Fog Large Mode) */}
-      {theme.showSecondaryMetadata && activeProfile.caregiverNotes.length > 0 && (
-        <View
-          style={[
-            styles.stationCueCard,
-            {
-              backgroundColor: theme.colors.accentSoft,
-              borderColor: theme.colors.accentBorder,
-            },
-          ]}
-        >
-          <View style={styles.stationCueHeader}>
-            <Ionicons
-              name="compass-outline"
-              size={20}
-              color={theme.colors.accentPrimary}
-            />
-            <Text
-              style={{
-                fontSize: theme.font.sm,
-                fontWeight: '700',
-                color: theme.colors.accentPrimary,
-              }}
-            >
-              Home Station Memory Cue
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: theme.font.sm,
-              lineHeight: theme.lineHeight.sm,
-              color: theme.colors.textPrimary,
-              marginTop: 6,
-            }}
-          >
-            {activeProfile.caregiverNotes[0]}
-          </Text>
-        </View>
-      )}
     </ScrollView>
   );
 }
@@ -376,23 +339,22 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 18,
-    paddingBottom: 42,
+    paddingBottom: 124,
   },
-  heroCard: {
-    borderWidth: 1,
-    marginBottom: 20,
+  maxWidthWrap: {
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
   },
-  progressSection: {
-    marginTop: 16,
-    gap: 8,
+  topHeader: {
+    marginBottom: 16,
   },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  progressWrap: {
+    marginTop: 8,
+    gap: 6,
   },
   progressTrack: {
-    height: 10,
+    height: 7,
     borderRadius: 999,
     overflow: 'hidden',
   },
@@ -400,45 +362,47 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 999,
   },
-  windowSection: {
+  segmentedBar: {
+    flexDirection: 'row',
+    padding: 4,
+    borderRadius: 16,
+    borderWidth: 1,
     marginBottom: 18,
   },
-  windowGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  windowTab: {
-    flexGrow: 1,
-    flexBasis: '22%',
-    minWidth: 78,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    borderWidth: 1.5,
+  segmentBtn: {
+    flex: 1,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 4,
   },
-  activeWindowHeader: {
-    marginBottom: 14,
-  },
-  emptyWindowCard: {
+  restCard: {
     padding: 28,
     borderRadius: 22,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
   },
-  stationCueCard: {
-    padding: 16,
-    borderRadius: 18,
+  emptyScheduleCard: {
+    padding: 28,
+    borderRadius: 24,
     borderWidth: 1,
-    marginTop: 6,
+    alignItems: 'center',
   },
-  stationCueHeader: {
+  emptyIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyPrimaryBtn: {
+    marginTop: 20,
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
+    borderRadius: 16,
   },
 });

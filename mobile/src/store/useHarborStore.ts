@@ -11,18 +11,43 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import {
   createInitialDemoLogs,
   DEMO_PROFILES,
+  MEMORY_ANCHOR_PRESETS,
 } from '../data/demoProfiles';
 import { buildHarborTheme, HarborTheme } from '../theme/theme';
 
+export const HARBOR_STORAGE_KEY = 'harbordose-storage-v2';
+
+export interface CompleteOnboardingParams {
+  userName: string;
+  userAge: number;
+  userRole: string;
+  conditions: string[];
+  includeStarterMeds: boolean;
+  brainFogMode: boolean;
+  defaultMemoryCue: string;
+}
+
 interface HarborState {
+  hasHydrated: boolean;
+  hasCompletedOnboarding: boolean;
+  currentUserName: string;
+  defaultMemoryCue: string;
   profiles: PatientProfile[];
   activeProfileId: string;
   doseLogs: DoseLog[];
   brainFogMode: boolean;
 
-  // Actions
+  // Hydration, Onboarding & Logout
+  setHasHydrated: (val: boolean) => void;
+  completeOnboarding: (params: CompleteOnboardingParams) => void;
+  reopenOnboarding: () => void;
+  logoutCurrentPerson: () => Promise<void>;
+  removeProfileById: (profileId: string) => Promise<void>;
+
+  // Core Actions
   setActiveProfile: (profileId: string) => void;
   toggleBrainFogMode: () => void;
+  setBrainFogMode: (enabled: boolean) => void;
   logDose: (params: {
     medicationId: string;
     profileId: string;
@@ -48,7 +73,7 @@ interface HarborState {
     age: number;
     conditions: string[];
   }) => PatientProfile;
-  resetDemoState: () => void;
+  loadSampleProfiles: () => void;
 }
 
 export function isSameLocalDay(isoA: string, dateB: Date = new Date()): boolean {
@@ -71,10 +96,122 @@ export function getSuggestedTimeWindow(now: Date = new Date()): TimeWindow {
 export const useHarborStore = create<HarborState>()(
   persist(
     (set, get) => ({
-      profiles: DEMO_PROFILES,
-      activeProfileId: DEMO_PROFILES[0].id,
-      doseLogs: createInitialDemoLogs(),
+      hasHydrated: false,
+      hasCompletedOnboarding: false,
+      currentUserName: '',
+      defaultMemoryCue: MEMORY_ANCHOR_PRESETS[0],
+      profiles: [],
+      activeProfileId: '',
+      doseLogs: [],
       brainFogMode: false,
+
+      setHasHydrated: (val) => set({ hasHydrated: val }),
+
+      completeOnboarding: ({
+        userName,
+        userAge,
+        userRole,
+        conditions,
+        includeStarterMeds,
+        brainFogMode,
+        defaultMemoryCue,
+      }) => {
+        const cleanName = userName.trim() || 'My Schedule';
+        const userProfileId = `profile-user-${Date.now()}`;
+
+        const starterMeds = includeStarterMeds
+          ? DEMO_PROFILES[0].medications.map((m) => ({ ...m }))
+          : [];
+
+        const primaryProfile: PatientProfile = {
+          id: userProfileId,
+          name: cleanName,
+          relation: userRole || 'My Schedule',
+          age: userAge || 65,
+          conditions:
+            conditions.length > 0 ? conditions : ['Daily Medication Routine'],
+          medications: starterMeds,
+          caregiverNotes: [
+            `Default physical habit after swallowing a dose: ${defaultMemoryCue}`,
+          ],
+        };
+
+        const profilesToSave: PatientProfile[] = includeStarterMeds
+          ? [primaryProfile, DEMO_PROFILES[1]]
+          : [primaryProfile];
+
+        const initialLogs: DoseLog[] = includeStarterMeds
+          ? [
+              {
+                id: `log-init-${Date.now()}`,
+                medicationId: 'med-lisinopril',
+                profileId: userProfileId,
+                timeWindow: 'Morning',
+                takenAtISO: new Date(
+                  Date.now() - 25 * 60 * 1000
+                ).toISOString(),
+                memoryAnchorCue: defaultMemoryCue,
+              },
+            ]
+          : [];
+
+        set({
+          hasCompletedOnboarding: true,
+          currentUserName: cleanName,
+          brainFogMode,
+          defaultMemoryCue,
+          profiles: profilesToSave,
+          activeProfileId: userProfileId,
+          doseLogs: initialLogs,
+        });
+      },
+
+      reopenOnboarding: () => {
+        set({ hasCompletedOnboarding: false });
+      },
+
+      // Removes the logged-in user & their data completely from localStorage / AsyncStorage
+      logoutCurrentPerson: async () => {
+        set({
+          hasCompletedOnboarding: false,
+          currentUserName: '',
+          defaultMemoryCue: MEMORY_ANCHOR_PRESETS[0],
+          profiles: [],
+          activeProfileId: '',
+          doseLogs: [],
+          brainFogMode: false,
+        });
+        try {
+          await AsyncStorage.removeItem(HARBOR_STORAGE_KEY);
+          await AsyncStorage.removeItem('harbordose-storage-v1');
+        } catch {
+          // Ignore storage removal errors
+        }
+      },
+
+      // Removes a single person from Care Circle local storage (or logs out completely if last person)
+      removeProfileById: async (profileId: string) => {
+        const remaining = get().profiles.filter((p) => p.id !== profileId);
+        const remainingLogs = get().doseLogs.filter(
+          (l) => l.profileId !== profileId
+        );
+
+        if (remaining.length === 0) {
+          await get().logoutCurrentPerson();
+          return;
+        }
+
+        const nextActiveId =
+          get().activeProfileId === profileId
+            ? remaining[0].id
+            : get().activeProfileId;
+
+        set({
+          profiles: remaining,
+          activeProfileId: nextActiveId,
+          doseLogs: remainingLogs,
+        });
+      },
 
       setActiveProfile: (profileId) => {
         set({ activeProfileId: profileId });
@@ -84,8 +221,13 @@ export const useHarborStore = create<HarborState>()(
         set((state) => ({ brainFogMode: !state.brainFogMode }));
       },
 
+      setBrainFogMode: (enabled) => {
+        set({ brainFogMode: enabled });
+      },
+
       logDose: ({ medicationId, profileId, timeWindow, memoryAnchorCue }) => {
-        // Prevent accidental duplicate log in the same day + timeWindow
+        const chosenCue = memoryAnchorCue || get().defaultMemoryCue;
+
         const existing = get().doseLogs.find(
           (l) =>
             l.profileId === profileId &&
@@ -94,8 +236,8 @@ export const useHarborStore = create<HarborState>()(
             isSameLocalDay(l.takenAtISO)
         );
         if (existing) {
-          if (memoryAnchorCue && memoryAnchorCue !== existing.memoryAnchorCue) {
-            get().updateDoseAnchor(existing.id, memoryAnchorCue);
+          if (chosenCue && chosenCue !== existing.memoryAnchorCue) {
+            get().updateDoseAnchor(existing.id, chosenCue);
           }
           return existing;
         }
@@ -106,7 +248,7 @@ export const useHarborStore = create<HarborState>()(
           profileId,
           timeWindow,
           takenAtISO: new Date().toISOString(),
-          memoryAnchorCue,
+          memoryAnchorCue: chosenCue,
         };
 
         set((state) => ({
@@ -225,13 +367,11 @@ export const useHarborStore = create<HarborState>()(
         const created: PatientProfile = {
           id: `profile-${Date.now()}`,
           name: name.trim(),
-          relation: relation.trim() || 'Care Circle Member',
+          relation: relation.trim() || 'Family Member',
           age: Number(age) || 65,
-          conditions: conditions.length > 0 ? conditions : ['Medication Support'],
+          conditions: conditions.length > 0 ? conditions : ['Daily Meds'],
           medications: [],
-          caregiverNotes: [
-            'Keep daily medications in one calm, visible home station.',
-          ],
+          caregiverNotes: [],
         };
 
         set((state) => ({
@@ -242,27 +382,74 @@ export const useHarborStore = create<HarborState>()(
         return created;
       },
 
-      resetDemoState: () => {
-        set({
-          profiles: DEMO_PROFILES,
-          activeProfileId: DEMO_PROFILES[0].id,
-          doseLogs: createInitialDemoLogs(),
-          brainFogMode: false,
-        });
+      loadSampleProfiles: () => {
+        const active = get().profiles.find(
+          (p) => p.id === get().activeProfileId
+        );
+        if (active) {
+          set((state) => ({
+            profiles: state.profiles.map((p) =>
+              p.id === active.id
+                ? {
+                    ...p,
+                    medications: DEMO_PROFILES[0].medications.map((m) => ({
+                      ...m,
+                    })),
+                  }
+                : p
+            ),
+            doseLogs: createInitialDemoLogs().map((l) =>
+              l.profileId === DEMO_PROFILES[0].id
+                ? { ...l, profileId: active.id }
+                : l
+            ),
+          }));
+        } else {
+          set({
+            profiles: DEMO_PROFILES,
+            activeProfileId: DEMO_PROFILES[0].id,
+            doseLogs: createInitialDemoLogs(),
+          });
+        }
       },
     }),
     {
-      name: 'harbordose-storage-v1',
+      name: HARBOR_STORAGE_KEY,
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        hasCompletedOnboarding: state.hasCompletedOnboarding,
+        currentUserName: state.currentUserName,
+        defaultMemoryCue: state.defaultMemoryCue,
+        profiles: state.profiles,
+        activeProfileId: state.activeProfileId,
+        doseLogs: state.doseLogs,
+        brainFogMode: state.brainFogMode,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );
+
+const FALLBACK_EMPTY_PROFILE: PatientProfile = {
+  id: 'fallback-empty',
+  name: 'Guest',
+  relation: 'My Schedule',
+  age: 65,
+  conditions: [],
+  medications: [],
+  caregiverNotes: [],
+};
 
 export function useActiveProfile(): PatientProfile {
   const profiles = useHarborStore((s) => s.profiles);
   const activeProfileId = useHarborStore((s) => s.activeProfileId);
   return useMemo(
-    () => profiles.find((p) => p.id === activeProfileId) || profiles[0],
+    () =>
+      profiles.find((p) => p.id === activeProfileId) ||
+      profiles[0] ||
+      FALLBACK_EMPTY_PROFILE,
     [profiles, activeProfileId]
   );
 }

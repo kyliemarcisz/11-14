@@ -39,14 +39,6 @@ interface DoseCardProps {
   index: number;
 }
 
-const HIGH_RISK_LABELS: Record<string, string> = {
-  blood_thinner: 'Blood Thinner • Single-Dose Guard',
-  statin: 'Cholesterol Care',
-  stimulant: 'ADHD Focus Support',
-  blood_pressure: 'Blood Pressure Care',
-  thyroid: 'Thyroid Hormone',
-};
-
 export const DoseCard: React.FC<DoseCardProps> = ({
   medication,
   patient,
@@ -57,10 +49,11 @@ export const DoseCard: React.FC<DoseCardProps> = ({
 }) => {
   const theme = useHarborTheme();
   const logDose = useHarborStore((s) => s.logDose);
+  const defaultMemoryCue = useHarborStore((s) => s.defaultMemoryCue);
   const updateDoseAnchor = useHarborStore((s) => s.updateDoseAnchor);
   const undoDoseLog = useHarborStore((s) => s.undoDoseLog);
 
-  const [showAnchorPicker, setShowAnchorPicker] = useState(false);
+  const [showCueModal, setShowCueModal] = useState(false);
   const [inspectModalOpen, setInspectModalOpen] = useState(false);
   const [recoveryModalOpen, setRecoveryModalOpen] = useState(false);
   const [recoveryLoading, setRecoveryLoading] = useState(false);
@@ -70,33 +63,17 @@ export const DoseCard: React.FC<DoseCardProps> = ({
 
   const isTaken = Boolean(existingLog);
 
-  const handleLogDoseWithAnchor = (anchorCue?: string) => {
+  const handleTakeDose = () => {
     triggerSuccessHaptic();
     logDose({
       medicationId: medication.id,
       profileId: patient.id,
       timeWindow,
-      memoryAnchorCue: anchorCue || MEMORY_ANCHOR_PRESETS[0],
+      memoryAnchorCue: defaultMemoryCue,
     });
-    setShowAnchorPicker(false);
   };
 
-  const handleSelectAnchor = (cue: string) => {
-    triggerSuccessHaptic();
-    if (existingLog) {
-      updateDoseAnchor(existingLog.id, cue);
-    } else {
-      logDose({
-        medicationId: medication.id,
-        profileId: patient.id,
-        timeWindow,
-        memoryAnchorCue: cue,
-      });
-    }
-    setShowAnchorPicker(false);
-  };
-
-  const openGentleRecovery = async (unsureIfTaken: boolean) => {
+  const openGentleRecovery = async () => {
     triggerSoftImpactHaptic();
     setRecoveryModalOpen(true);
     setRecoveryLoading(true);
@@ -110,7 +87,7 @@ export const DoseCard: React.FC<DoseCardProps> = ({
           minute: '2-digit',
         }),
         todayLogs,
-        unsureIfTaken,
+        unsureIfTaken: true,
       });
       setRecoveryAdvice(advice);
     } finally {
@@ -137,56 +114,40 @@ export const DoseCard: React.FC<DoseCardProps> = ({
 
   return (
     <Animated.View
-      entering={FadeInDown.delay(index * 65).duration(320)}
-      layout={LinearTransition.springify().damping(19).stiffness(160)}
+      entering={FadeInDown.delay(index * 55).duration(280)}
+      layout={LinearTransition.springify().damping(20).stiffness(170)}
       style={[
         styles.card,
         {
           backgroundColor: isTaken
             ? theme.colors.safeSoft
             : theme.colors.surface,
-          borderColor: isTaken
-            ? theme.colors.safeBorder
-            : theme.colors.border,
+          borderColor: isTaken ? theme.colors.safeBorder : theme.colors.border,
           borderRadius: theme.radius.lg,
           padding: theme.spacing.lg,
         },
       ]}
     >
-      {/* Top Row: Medication Identity + Tactile SVG Pill */}
-      <View style={styles.topRow}>
-        <View style={styles.titleCol}>
-          {theme.showSecondaryMetadata && medication.highRiskCategory && (
-            <View
-              style={[
-                styles.categoryBadge,
-                {
-                  backgroundColor:
-                    medication.highRiskCategory === 'blood_thinner'
-                      ? theme.colors.cautionSoft
-                      : theme.colors.accentSoft,
-                  borderColor:
-                    medication.highRiskCategory === 'blood_thinner'
-                      ? theme.colors.cautionBorder
-                      : theme.colors.accentBorder,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  fontSize: theme.font.xs,
-                  fontWeight: '700',
-                  color:
-                    medication.highRiskCategory === 'blood_thinner'
-                      ? theme.colors.caution
-                      : theme.colors.accentPrimary,
-                }}
-              >
-                {HIGH_RISK_LABELS[medication.highRiskCategory]}
-              </Text>
-            </View>
-          )}
+      {/* Clean Single Row: SVG Pill + Name/Dosage */}
+      <View style={styles.headerRow}>
+        <Pressable
+          onPress={() => {
+            triggerSoftImpactHaptic();
+            setInspectModalOpen(true);
+          }}
+          style={[
+            styles.pillTile,
+            {
+              backgroundColor: theme.colors.backgroundPrimary,
+              borderColor: theme.colors.border,
+            },
+          ]}
+          accessibilityLabel={`Inspect ${medication.name} pill`}
+        >
+          <PillIllustration visual={medication.pillVisual} size="sm" />
+        </Pressable>
 
+        <View style={styles.metaCol}>
           <Text
             style={{
               fontSize: theme.font.title,
@@ -205,192 +166,122 @@ export const DoseCard: React.FC<DoseCardProps> = ({
               marginTop: 2,
             }}
           >
-            {medication.genericName} • {medication.dosage}
+            {medication.dosage}
+            {theme.showSecondaryMetadata ? ` • ${medication.genericName}` : ''}
           </Text>
-        </View>
-
-        <Pressable
-          onPress={() => {
-            triggerSoftImpactHaptic();
-            setInspectModalOpen(true);
-          }}
-          style={({ pressed }) => [
-            styles.pillPreviewBox,
-            {
-              backgroundColor: theme.colors.backgroundPrimary,
-              borderColor: theme.colors.border,
-              opacity: pressed ? 0.82 : 1,
-            },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={`Inspect ${medication.name} pill visual`}
-        >
-          <PillIllustration
-            visual={medication.pillVisual}
-            size={theme.brainFogMode ? 'md' : 'sm'}
-          />
-          {theme.showSecondaryMetadata && (
+          {theme.showSecondaryMetadata && !isTaken && (
             <Text
+              numberOfLines={2}
               style={{
-                fontSize: 11,
-                fontWeight: '600',
-                color: theme.colors.textSecondary,
-                marginTop: 2,
-              }}
-            >
-              Tap to verify
-            </Text>
-          )}
-        </Pressable>
-      </View>
-
-      {/* Plain-English Purpose & Food Rule (Hidden in Brain-Fog Large Mode to keep cognitive load minimal) */}
-      {theme.showSecondaryMetadata && !isTaken && (
-        <View
-          style={[
-            styles.infoBox,
-            {
-              backgroundColor: theme.colors.backgroundPrimary,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <Text
-            style={{
-              fontSize: theme.font.sm,
-              lineHeight: theme.lineHeight.sm,
-              color: theme.colors.textPrimary,
-            }}
-          >
-            {medication.plainEnglishPurpose}
-          </Text>
-          <View style={styles.foodRuleRow}>
-            <Ionicons
-              name="restaurant-outline"
-              size={15}
-              color={theme.colors.accentPrimary}
-            />
-            <Text
-              style={{
-                flex: 1,
                 fontSize: theme.font.xs,
+                lineHeight: 18,
                 color: theme.colors.textSecondary,
-                fontWeight: '500',
+                marginTop: 4,
               }}
             >
               {medication.foodRules}
             </Text>
-          </View>
+          )}
         </View>
-      )}
+      </View>
 
-      {/* Taken State: Anti-Double-Dose Reassurance Banner */}
+      {/* Action or Calm Taken Confirmation */}
       {isTaken && existingLog ? (
-        <View style={styles.takenContainer}>
-          <View style={styles.takenHeaderRow}>
-            <Ionicons
-              name="checkmark-circle"
-              size={theme.brainFogMode ? 28 : 22}
-              color={theme.colors.safe}
-            />
-            <Text
-              style={{
-                flex: 1,
-                fontSize: theme.font.bodyLg,
-                fontWeight: '700',
-                color: theme.colors.safe,
+        <View style={styles.takenWrap}>
+          <View style={styles.takenTopRow}>
+            <View style={styles.takenCheckRow}>
+              <Ionicons
+                name="checkmark-circle"
+                size={22}
+                color={theme.colors.safe}
+              />
+              <Text
+                style={{
+                  fontSize: theme.font.body,
+                  fontWeight: '700',
+                  color: theme.colors.safe,
+                }}
+              >
+                Taken at {takenTimeFormatted}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={() => {
+                triggerSoftImpactHaptic();
+                undoDoseLog(existingLog.id);
               }}
+              hitSlop={10}
             >
-              Safely Taken at {takenTimeFormatted}
-            </Text>
+              <Text
+                style={{
+                  fontSize: theme.font.xs,
+                  fontWeight: '600',
+                  color: theme.colors.textSecondary,
+                }}
+              >
+                Undo
+              </Text>
+            </Pressable>
           </View>
 
           <Pressable
             onPress={() => {
               triggerSoftImpactHaptic();
-              setShowAnchorPicker((v) => !v);
+              setShowCueModal(true);
             }}
             style={[
-              styles.anchorLockedPill,
+              styles.cueChip,
               {
-                minHeight: theme.minTouchTarget,
+                minHeight: theme.brainFogMode ? 64 : 40,
                 backgroundColor: theme.colors.surface,
                 borderColor: theme.colors.safeBorder,
               },
             ]}
           >
             <Ionicons
-              name="locate-outline"
-              size={20}
+              name="hand-left-outline"
+              size={16}
               color={theme.colors.safe}
             />
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: theme.font.xs,
-                  color: theme.colors.textSecondary,
-                  fontWeight: '600',
-                }}
-              >
-                Physical Memory Anchor (Anti-Double-Dose Proof)
-              </Text>
-              <Text
-                style={{
-                  fontSize: theme.font.sm,
-                  color: theme.colors.textPrimary,
-                  fontWeight: '700',
-                  marginTop: 2,
-                }}
-              >
-                {existingLog.memoryAnchorCue || 'Tap to lock a physical cue'}
-              </Text>
-            </View>
-            <Ionicons
-              name="create-outline"
-              size={18}
-              color={theme.colors.textSecondary}
-            />
-          </Pressable>
-
-          {theme.showSecondaryMetadata && (
-            <Pressable
-              onPress={() => {
-                triggerSoftImpactHaptic();
-                undoDoseLog(existingLog.id);
+            <Text
+              numberOfLines={1}
+              style={{
+                flex: 1,
+                fontSize: theme.font.sm,
+                fontWeight: '600',
+                color: theme.colors.textPrimary,
               }}
-              style={styles.undoBtn}
             >
-              <Text
-                style={{
-                  fontSize: theme.font.xs,
-                  color: theme.colors.textSecondary,
-                  fontWeight: '600',
-                }}
-              >
-                Tapped by mistake? Undo gently
-              </Text>
-            </Pressable>
-          )}
+              {existingLog.memoryAnchorCue || defaultMemoryCue}
+            </Text>
+            <Text
+              style={{
+                fontSize: theme.font.xs,
+                fontWeight: '700',
+                color: theme.colors.accentPrimary,
+              }}
+            >
+              Change
+            </Text>
+          </Pressable>
         </View>
       ) : (
-        /* Open Dose Actions */
-        <View style={styles.actionsCol}>
+        <View style={styles.openActions}>
           <Pressable
-            onPress={() => handleLogDoseWithAnchor(MEMORY_ANCHOR_PRESETS[0])}
+            onPress={handleTakeDose}
             style={({ pressed }) => [
-              styles.primaryTakeButton,
+              styles.takeButton,
               {
-                minHeight: Math.max(theme.minTouchTarget, 58),
+                minHeight: Math.max(theme.minTouchTarget, 56),
                 backgroundColor: theme.colors.accentPrimary,
                 opacity: pressed ? 0.9 : 1,
               },
             ]}
-            accessibilityRole="button"
-            accessibilityLabel={`Log ${medication.name} ${medication.dosage} as taken`}
           >
             <Ionicons
-              name="checkmark-circle-outline"
-              size={theme.brainFogMode ? 28 : 22}
+              name="checkmark"
+              size={22}
               color={theme.colors.white}
             />
             <Text
@@ -400,126 +291,105 @@ export const DoseCard: React.FC<DoseCardProps> = ({
                 color: theme.colors.white,
               }}
             >
-              Log 1 Dose Taken
+              Take Dose
             </Text>
           </Pressable>
 
-          <View style={styles.secondaryActionsRow}>
-            <Pressable
-              onPress={() => {
-                triggerSoftImpactHaptic();
-                setShowAnchorPicker((v) => !v);
-              }}
-              style={[
-                styles.secondaryBtn,
-                {
-                  minHeight: theme.minTouchTarget,
-                  backgroundColor: theme.colors.backgroundPrimary,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-            >
-              <Ionicons
-                name="hand-left-outline"
-                size={18}
-                color={theme.colors.accentPrimary}
-              />
-              <Text
-                style={{
-                  fontSize: theme.font.sm,
-                  fontWeight: '600',
-                  color: theme.colors.textPrimary,
-                }}
-              >
-                Pick Anchor
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => openGentleRecovery(true)}
-              style={[
-                styles.secondaryBtn,
-                {
-                  minHeight: theme.minTouchTarget,
-                  backgroundColor: theme.colors.cautionSoft,
-                  borderColor: theme.colors.cautionBorder,
-                },
-              ]}
-            >
-              <Ionicons
-                name="help-buoy-outline"
-                size={18}
-                color={theme.colors.caution}
-              />
-              <Text
-                style={{
-                  fontSize: theme.font.sm,
-                  fontWeight: '700',
-                  color: theme.colors.caution,
-                }}
-              >
-                Late or Unsure?
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      {/* Expandable Physical Memory Anchor Drawer */}
-      {showAnchorPicker && (
-        <View
-          style={[
-            styles.anchorDrawer,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <Text
-            style={{
-              fontSize: theme.font.sm,
-              fontWeight: '700',
-              color: theme.colors.textPrimary,
-              marginBottom: 8,
-            }}
+          <Pressable
+            onPress={openGentleRecovery}
+            style={[
+              styles.unsureLink,
+              { minHeight: theme.brainFogMode ? 64 : 36 },
+            ]}
           >
-            Lock a physical memory cue right as you swallow:
-          </Text>
-          {MEMORY_ANCHOR_PRESETS.map((preset) => (
-            <Pressable
-              key={preset}
-              onPress={() => handleSelectAnchor(preset)}
-              style={[
-                styles.anchorChoice,
-                {
-                  minHeight: theme.minTouchTarget,
-                  backgroundColor: theme.colors.backgroundPrimary,
-                  borderColor: theme.colors.border,
-                },
-              ]}
+            <Text
+              style={{
+                fontSize: theme.font.xs,
+                fontWeight: '600',
+                color: theme.colors.textSecondary,
+              }}
             >
-              <Ionicons
-                name="sparkles-outline"
-                size={18}
-                color={theme.colors.accentPrimary}
-              />
-              <Text
-                style={{
-                  flex: 1,
-                  fontSize: theme.font.sm,
-                  fontWeight: '600',
-                  color: theme.colors.textPrimary,
-                }}
-              >
-                {preset}
-              </Text>
-            </Pressable>
-          ))}
+              Running late or not sure if you already took this?
+            </Text>
+          </Pressable>
         </View>
       )}
 
-      {/* Visual Pill Check Modal */}
+      {/* Change Physical Habit Modal */}
+      <Modal
+        visible={showCueModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCueModal(false)}
+      >
+        <Pressable
+          style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}
+          onPress={() => setShowCueModal(false)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                fontSize: theme.font.subtitle,
+                fontWeight: '800',
+                color: theme.colors.textPrimary,
+                marginBottom: 6,
+              }}
+            >
+              Which physical habit did you do?
+            </Text>
+            <Text
+              style={{
+                fontSize: theme.font.sm,
+                color: theme.colors.textSecondary,
+                marginBottom: 14,
+              }}
+            >
+              Helps you verify later without guessing.
+            </Text>
+            {MEMORY_ANCHOR_PRESETS.map((preset) => (
+              <Pressable
+                key={preset}
+                onPress={() => {
+                  triggerSuccessHaptic();
+                  if (existingLog) {
+                    updateDoseAnchor(existingLog.id, preset);
+                  }
+                  setShowCueModal(false);
+                }}
+                style={[
+                  styles.presetBtn,
+                  {
+                    minHeight: theme.minTouchTarget,
+                    backgroundColor: theme.colors.backgroundPrimary,
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    fontSize: theme.font.body,
+                    fontWeight: '600',
+                    color: theme.colors.textPrimary,
+                  }}
+                >
+                  {preset}
+                </Text>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Pill Visual Zoom Modal */}
       <Modal
         visible={inspectModalOpen}
         transparent
@@ -527,7 +397,7 @@ export const DoseCard: React.FC<DoseCardProps> = ({
         onRequestClose={() => setInspectModalOpen(false)}
       >
         <Pressable
-          style={[styles.modalBackdrop, { backgroundColor: theme.colors.overlay }]}
+          style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}
           onPress={() => setInspectModalOpen(false)}
         >
           <Pressable
@@ -542,21 +412,9 @@ export const DoseCard: React.FC<DoseCardProps> = ({
           >
             <Text
               style={{
-                fontSize: theme.font.xs,
-                fontWeight: '700',
-                color: theme.colors.accentPrimary,
-                textTransform: 'uppercase',
-                letterSpacing: 0.6,
-              }}
-            >
-              Visual Pill Match Check
-            </Text>
-            <Text
-              style={{
                 fontSize: theme.font.title,
                 fontWeight: '800',
                 color: theme.colors.textPrimary,
-                marginTop: 4,
               }}
             >
               {medication.name} ({medication.dosage})
@@ -565,15 +423,16 @@ export const DoseCard: React.FC<DoseCardProps> = ({
               style={{
                 fontSize: theme.font.sm,
                 color: theme.colors.textSecondary,
+                marginTop: 2,
                 marginBottom: 16,
               }}
             >
-              Generic: {medication.genericName}
+              {medication.plainEnglishPurpose}
             </Text>
 
             <View
               style={[
-                styles.largePillStage,
+                styles.pillZoomStage,
                 {
                   backgroundColor: theme.colors.backgroundPrimary,
                   borderColor: theme.colors.border,
@@ -583,34 +442,21 @@ export const DoseCard: React.FC<DoseCardProps> = ({
               <PillIllustration visual={medication.pillVisual} size="lg" />
               <Text
                 style={{
-                  fontSize: theme.font.body,
+                  fontSize: theme.font.sm,
                   fontWeight: '700',
                   color: theme.colors.textPrimary,
-                  marginTop: 10,
+                  marginTop: 8,
                 }}
               >
-                Shape: {medication.pillVisual.shape.toUpperCase()} • Imprint: &ldquo;
-                {medication.pillVisual.imprintCode}&rdquo;
+                {medication.pillVisual.shape.toUpperCase()} • Imprint “
+                {medication.pillVisual.imprintCode}”
               </Text>
             </View>
-
-            <Text
-              style={{
-                fontSize: theme.font.sm,
-                lineHeight: theme.lineHeight.sm,
-                color: theme.colors.textSecondary,
-                marginTop: 14,
-              }}
-            >
-              If the pill in your hand has a different shape, color, or imprint
-              number than shown above, pause before swallowing and check the bottle
-              label.
-            </Text>
 
             <Pressable
               onPress={() => setInspectModalOpen(false)}
               style={[
-                styles.modalCloseBtn,
+                styles.closeBtn,
                 {
                   minHeight: theme.minTouchTarget,
                   backgroundColor: theme.colors.accentPrimary,
@@ -624,18 +470,18 @@ export const DoseCard: React.FC<DoseCardProps> = ({
                   color: theme.colors.white,
                 }}
               >
-                Looks Right — Close
+                Close
               </Text>
             </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Zero-Shame Gemini Recovery Advisor Modal */}
+      {/* Calm Recovery Modal */}
       <Modal
         visible={recoveryModalOpen}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => {
           stopCalmAudio();
           setIsSpeaking(false);
@@ -643,69 +489,50 @@ export const DoseCard: React.FC<DoseCardProps> = ({
         }}
       >
         <View
-          style={[styles.modalBackdrop, { backgroundColor: theme.colors.overlay }]}
+          style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}
         >
           <View
             style={[
               styles.modalCard,
               {
-                maxHeight: '86%',
+                maxHeight: '84%',
                 backgroundColor: theme.colors.surface,
                 borderColor: theme.colors.border,
               },
             ]}
           >
             <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.recoveryBadgeRow}>
-                <Ionicons
-                  name="leaf-outline"
-                  size={20}
-                  color={theme.colors.accentPrimary}
-                />
-                <Text
-                  style={{
-                    fontSize: theme.font.xs,
-                    fontWeight: '700',
-                    color: theme.colors.accentPrimary,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Zero-Shame Calm Recovery • Gemini
-                </Text>
-              </View>
-
               <Text
                 style={{
                   fontSize: theme.font.title,
                   fontWeight: '800',
                   color: theme.colors.textPrimary,
-                  marginTop: 6,
                 }}
               >
-                {medication.name} ({medication.dosage})
+                {medication.name} — Calm Next Step
               </Text>
 
               {recoveryLoading || !recoveryAdvice ? (
-                <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+                <View style={{ paddingVertical: 28, alignItems: 'center' }}>
                   <ActivityIndicator
                     size="large"
                     color={theme.colors.accentPrimary}
                   />
                   <Text
                     style={{
-                      marginTop: 12,
+                      marginTop: 10,
                       fontSize: theme.font.sm,
                       color: theme.colors.textSecondary,
                     }}
                   >
-                    Checking calm clinical next steps with Gemini...
+                    Checking safe guidance...
                   </Text>
                 </View>
               ) : (
-                <View style={{ marginTop: 14, gap: 12 }}>
+                <View style={{ marginTop: 12, gap: 12 }}>
                   <Text
                     style={{
-                      fontSize: theme.font.bodyLg,
+                      fontSize: theme.font.body,
                       fontWeight: '700',
                       color: theme.colors.textPrimary,
                     }}
@@ -713,7 +540,6 @@ export const DoseCard: React.FC<DoseCardProps> = ({
                     {recoveryAdvice.calmHeadline}
                   </Text>
 
-                  {/* Empathetic Audio Readout Button */}
                   <Pressable
                     onPress={() =>
                       handleSpeakAdvice(recoveryAdvice.spokenScript)
@@ -730,8 +556,10 @@ export const DoseCard: React.FC<DoseCardProps> = ({
                     ]}
                   >
                     <Ionicons
-                      name={isSpeaking ? 'stop-circle-outline' : 'volume-high-outline'}
-                      size={22}
+                      name={
+                        isSpeaking ? 'stop-circle-outline' : 'volume-high-outline'
+                      }
+                      size={20}
                       color={
                         isSpeaking
                           ? theme.colors.white
@@ -740,79 +568,42 @@ export const DoseCard: React.FC<DoseCardProps> = ({
                     />
                     <Text
                       style={{
-                        fontSize: theme.font.body,
+                        fontSize: theme.font.sm,
                         fontWeight: '700',
                         color: isSpeaking
                           ? theme.colors.white
                           : theme.colors.accentPrimary,
                       }}
                     >
-                      {isSpeaking ? 'Stop Audio Readout' : 'Listen Gently Aloud'}
+                      {isSpeaking ? 'Stop Audio' : 'Read Aloud Gently'}
                     </Text>
                   </Pressable>
 
-                  {/* Step-by-step gentle actions */}
-                  <View
-                    style={[
-                      styles.stepsContainer,
-                      {
-                        backgroundColor: theme.colors.backgroundPrimary,
-                        borderColor: theme.colors.border,
-                      },
-                    ]}
-                  >
+                  <View style={{ gap: 8 }}>
                     {recoveryAdvice.stepByStepAction.map((step, idx) => (
-                      <View key={idx} style={styles.stepRow}>
-                        <View
-                          style={[
-                            styles.stepNumber,
-                            { backgroundColor: theme.colors.accentPrimary },
-                          ]}
-                        >
-                          <Text
-                            style={{
-                              color: theme.colors.white,
-                              fontWeight: '700',
-                              fontSize: 12,
-                            }}
-                          >
-                            {idx + 1}
-                          </Text>
-                        </View>
-                        <Text
-                          style={{
-                            flex: 1,
-                            fontSize: theme.font.body,
-                            lineHeight: theme.lineHeight.body,
-                            color: theme.colors.textPrimary,
-                          }}
-                        >
-                          {step}
-                        </Text>
-                      </View>
+                      <Text
+                        key={idx}
+                        style={{
+                          fontSize: theme.font.sm,
+                          lineHeight: theme.lineHeight.sm,
+                          color: theme.colors.textPrimary,
+                        }}
+                      >
+                        <Text style={{ fontWeight: '800' }}>{idx + 1}. </Text>
+                        {step}
+                      </Text>
                     ))}
                   </View>
 
-                  {/* Double-Dose Guard Box */}
                   <View
                     style={[
-                      styles.warningBox,
+                      styles.cautionBox,
                       {
                         backgroundColor: theme.colors.cautionSoft,
                         borderColor: theme.colors.cautionBorder,
                       },
                     ]}
                   >
-                    <Text
-                      style={{
-                        fontSize: theme.font.sm,
-                        fontWeight: '700',
-                        color: theme.colors.caution,
-                        marginBottom: 4,
-                      }}
-                    >
-                      Single-Dose Protection Rule
-                    </Text>
                     <Text
                       style={{
                         fontSize: theme.font.sm,
@@ -823,16 +614,6 @@ export const DoseCard: React.FC<DoseCardProps> = ({
                       {recoveryAdvice.doubleDoseWarning}
                     </Text>
                   </View>
-
-                  <Text
-                    style={{
-                      fontSize: theme.font.xs,
-                      color: theme.colors.textSecondary,
-                      lineHeight: 18,
-                    }}
-                  >
-                    {recoveryAdvice.whenToCallDoctorOrPharmacist}
-                  </Text>
                 </View>
               )}
 
@@ -843,7 +624,7 @@ export const DoseCard: React.FC<DoseCardProps> = ({
                   setRecoveryModalOpen(false);
                 }}
                 style={[
-                  styles.modalCloseBtn,
+                  styles.closeBtn,
                   {
                     minHeight: theme.minTouchTarget,
                     backgroundColor: theme.colors.textPrimary,
@@ -857,7 +638,7 @@ export const DoseCard: React.FC<DoseCardProps> = ({
                     color: theme.colors.white,
                   }}
                 >
-                  Got It — Return to Harbor
+                  Done
                 </Text>
               </Pressable>
             </ScrollView>
@@ -870,176 +651,105 @@ export const DoseCard: React.FC<DoseCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    borderWidth: 1.5,
-    marginBottom: 16,
-    shadowColor: '#132238',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  titleCol: {
-    flex: 1,
-  },
-  categoryBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: 14,
   },
-  pillPreviewBox: {
+  headerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 14,
+  },
+  pillTile: {
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 16,
     borderWidth: 1,
-  },
-  infoBox: {
-    marginTop: 14,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 8,
-  },
-  foodRuleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  actionsCol: {
-    marginTop: 16,
-    gap: 10,
-  },
-  primaryTakeButton: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    borderRadius: 16,
-    paddingHorizontal: 18,
   },
-  secondaryActionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  secondaryBtn: {
+  metaCol: {
     flex: 1,
+  },
+  openActions: {
+    marginTop: 14,
+  },
+  takeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-  },
-  takenContainer: {
-    marginTop: 14,
-    gap: 10,
-  },
-  takenHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
-  },
-  anchorLockedPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  undoBtn: {
-    alignSelf: 'flex-end',
-    paddingVertical: 4,
-  },
-  anchorDrawer: {
-    marginTop: 12,
-    padding: 12,
     borderRadius: 16,
-    borderWidth: 1,
+  },
+  unsureLink: {
+    marginTop: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  takenWrap: {
+    marginTop: 14,
     gap: 8,
   },
-  anchorChoice: {
+  takenTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+  },
+  takenCheckRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  cueChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
   },
-  modalBackdrop: {
+  backdrop: {
     flex: 1,
     justifyContent: 'center',
-    padding: 20,
+    padding: 22,
   },
   modalCard: {
-    borderRadius: 26,
+    width: '100%',
+    maxWidth: 460,
+    alignSelf: 'center',
+    borderRadius: 24,
     padding: 22,
     borderWidth: 1,
   },
-  largePillStage: {
-    alignItems: 'center',
+  presetBtn: {
     justifyContent: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  pillZoomStage: {
+    alignItems: 'center',
+    paddingVertical: 18,
+    borderRadius: 18,
     borderWidth: 1,
   },
-  modalCloseBtn: {
-    marginTop: 18,
+  closeBtn: {
+    marginTop: 16,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  recoveryBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
   },
   audioBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
     borderRadius: 14,
     borderWidth: 1,
-    paddingHorizontal: 14,
   },
-  stepsContainer: {
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 12,
-  },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  stepNumber: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  warningBox: {
-    padding: 14,
-    borderRadius: 16,
+  cautionBox: {
+    padding: 12,
+    borderRadius: 14,
     borderWidth: 1,
   },
 });

@@ -4,7 +4,7 @@ import {
   RegimenAuditResult,
   SafetySeverity,
 } from '@shared/types';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -28,16 +28,9 @@ import {
   useHarborTheme,
 } from '../../src/store/useHarborStore';
 
-const QUICK_CHECK_CHIPS = [
-  'Advil / Ibuprofen',
-  'Grapefruit Juice',
-  'Morning Coffee',
-  'Calcium / Tums',
-  'Sudafed Cold Med',
-  'Plain Tylenol',
-];
+const QUICK_CHIPS = ['Advil', 'Coffee', 'Grapefruit', 'Cold Medicine'];
 
-export default function SafetyLabScreen() {
+export default function AskSafetyScreen() {
   const theme = useHarborTheme();
   const activeProfile = useActiveProfile();
   const allLogs = useHarborStore((s) => s.doseLogs);
@@ -47,6 +40,7 @@ export default function SafetyLabScreen() {
   const [quickResult, setQuickResult] = useState<QuickCheckResult | null>(null);
   const [speakingQuick, setSpeakingQuick] = useState(false);
 
+  const [auditOpen, setAuditOpen] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditResult, setAuditResult] = useState<RegimenAuditResult | null>(
     null
@@ -59,23 +53,6 @@ export default function SafetyLabScreen() {
       ),
     [allLogs, activeProfile.id]
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    setQuickResult(null);
-    setAuditLoading(true);
-    auditRegimenApi(activeProfile)
-      .then((res) => {
-        if (!cancelled) setAuditResult(res);
-      })
-      .finally(() => {
-        if (!cancelled) setAuditLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      stopCalmAudio();
-    };
-  }, [activeProfile]);
 
   const handleRunQuickCheck = async (itemText: string) => {
     const trimmed = itemText.trim();
@@ -100,6 +77,22 @@ export default function SafetyLabScreen() {
       }
     } finally {
       setCheckingQuick(false);
+    }
+  };
+
+  const handleToggleFullAudit = async () => {
+    triggerSoftImpactHaptic();
+    if (auditOpen) {
+      setAuditOpen(false);
+      return;
+    }
+    setAuditOpen(true);
+    setAuditLoading(true);
+    try {
+      const res = await auditRegimenApi(activeProfile);
+      setAuditResult(res);
+    } finally {
+      setAuditLoading(false);
     }
   };
 
@@ -136,7 +129,7 @@ export default function SafetyLabScreen() {
       return;
     }
     setSpeakingQuick(true);
-    const script = `${quickResult.verdictBadge}. ${quickResult.calmAnswer} ${quickResult.whyItMatters} ${quickResult.safeAlternativeOrTiming}`;
+    const script = `${quickResult.verdictBadge}. ${quickResult.calmAnswer} ${quickResult.safeAlternativeOrTiming}`;
     await playCalmReadout(script, () => setSpeakingQuick(false));
   };
 
@@ -149,387 +142,176 @@ export default function SafetyLabScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Section 1: "Can I Take This Right Now?" Checker */}
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.xl,
-            padding: theme.spacing.lg,
-          },
-        ]}
-      >
+      <View style={styles.maxWidthWrap}>
         <Text
           style={{
-            fontSize: theme.font.title,
+            fontSize: theme.font.hero,
+            lineHeight: theme.lineHeight.hero,
             fontWeight: '800',
             color: theme.colors.textPrimary,
+            letterSpacing: -0.5,
           }}
         >
-          “Can I have this right now?”
+          Is it safe with my meds?
         </Text>
         <Text
           style={{
-            fontSize: theme.font.sm,
-            lineHeight: theme.lineHeight.sm,
+            fontSize: theme.font.body,
+            lineHeight: theme.lineHeight.body,
             color: theme.colors.textSecondary,
-            marginTop: 4,
+            marginTop: 6,
+            marginBottom: 18,
           }}
         >
-          Check any pain reliever, cold medicine, drink, or supplement against{' '}
-          {activeProfile.name.split(' ')[0]}’s prescriptions.
+          Ask about any painkiller, drink, vitamin, or cold medicine before
+          taking it.
         </Text>
 
-        {/* One-Tap Quick Chips */}
-        <View style={styles.chipGrid}>
-          {QUICK_CHECK_CHIPS.map((chip) => {
-            const active = queryText.toLowerCase() === chip.toLowerCase();
-            return (
-              <Pressable
-                key={chip}
-                onPress={() => handleRunQuickCheck(chip)}
-                style={[
-                  styles.quickChip,
-                  {
-                    minHeight: theme.brainFogMode ? 64 : 42,
-                    backgroundColor: active
-                      ? theme.colors.accentPrimary
-                      : theme.colors.backgroundPrimary,
-                    borderColor: active
-                      ? theme.colors.accentPrimary
-                      : theme.colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    fontSize: theme.font.sm,
-                    fontWeight: '700',
-                    color: active
-                      ? theme.colors.white
-                      : theme.colors.textPrimary,
-                  }}
-                >
-                  {chip}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {/* Free-text input */}
-        <View style={styles.searchRow}>
-          <TextInput
-            value={queryText}
-            onChangeText={setQueryText}
-            onSubmitEditing={() => handleRunQuickCheck(queryText)}
-            placeholder="Ask about any food, vitamin, or OTC pill..."
-            placeholderTextColor={theme.colors.textMuted}
-            style={[
-              styles.searchInput,
-              {
-                minHeight: theme.minTouchTarget,
-                fontSize: theme.font.body,
-                color: theme.colors.textPrimary,
-                backgroundColor: theme.colors.backgroundPrimary,
-                borderColor: theme.colors.border,
-              },
-            ]}
-          />
-          <Pressable
-            onPress={() => handleRunQuickCheck(queryText)}
-            style={[
-              styles.checkBtn,
-              {
-                minHeight: theme.minTouchTarget,
-                backgroundColor: theme.colors.accentPrimary,
-              },
-            ]}
-          >
-            <Text
-              style={{
-                fontSize: theme.font.body,
-                fontWeight: '700',
-                color: theme.colors.white,
-              }}
-            >
-              Check
-            </Text>
-          </Pressable>
-        </View>
-
-        {checkingQuick && (
-          <View style={styles.inlineLoader}>
-            <ActivityIndicator color={theme.colors.accentPrimary} />
-            <Text
-              style={{
-                fontSize: theme.font.sm,
-                color: theme.colors.textSecondary,
-                fontWeight: '600',
-              }}
-            >
-              Gemini is checking interactions...
-            </Text>
-          </View>
-        )}
-
-        {quickResult && !checkingQuick && (
-          <View
-            style={[
-              styles.verdictBox,
-              {
-                backgroundColor: severityPalette(quickResult.severity).bg,
-                borderColor: severityPalette(quickResult.severity).border,
-              },
-            ]}
-          >
-            <View style={styles.verdictHeader}>
-              <Ionicons
-                name={severityPalette(quickResult.severity).icon}
-                size={24}
-                color={severityPalette(quickResult.severity).fg}
-              />
-              <Text
-                style={{
-                  flex: 1,
-                  fontSize: theme.font.bodyLg,
-                  fontWeight: '800',
-                  color: severityPalette(quickResult.severity).fg,
-                }}
-              >
-                {quickResult.verdictBadge}
-              </Text>
-            </View>
-
-            <Text
-              style={{
-                fontSize: theme.font.body,
-                lineHeight: theme.lineHeight.body,
-                fontWeight: '700',
-                color: theme.colors.textPrimary,
-                marginTop: 8,
-              }}
-            >
-              {quickResult.calmAnswer}
-            </Text>
-
-            {theme.showSecondaryMetadata && (
-              <Text
-                style={{
-                  fontSize: theme.font.sm,
-                  lineHeight: theme.lineHeight.sm,
-                  color: theme.colors.textPrimary,
-                  marginTop: 6,
-                }}
-              >
-                {quickResult.whyItMatters}
-              </Text>
-            )}
-
-            <View
+        {/* Primary Search Card */}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.xl,
+              padding: theme.spacing.lg,
+            },
+          ]}
+        >
+          <View style={styles.searchRow}>
+            <TextInput
+              value={queryText}
+              onChangeText={setQueryText}
+              onSubmitEditing={() => handleRunQuickCheck(queryText)}
+              placeholder="Type e.g. Advil, Tylenol, melatonin..."
+              placeholderTextColor={theme.colors.textMuted}
               style={[
-                styles.safeAltBox,
+                styles.searchInput,
                 {
-                  backgroundColor: theme.colors.surface,
+                  minHeight: theme.minTouchTarget,
+                  fontSize: theme.font.body,
+                  color: theme.colors.textPrimary,
+                  backgroundColor: theme.colors.backgroundPrimary,
                   borderColor: theme.colors.border,
                 },
               ]}
-            >
-              <Text
-                style={{
-                  fontSize: theme.font.sm,
-                  fontWeight: '700',
-                  color: theme.colors.accentPrimary,
-                }}
-              >
-                Calm Next Step
-              </Text>
-              <Text
-                style={{
-                  fontSize: theme.font.sm,
-                  lineHeight: theme.lineHeight.sm,
-                  color: theme.colors.textPrimary,
-                  marginTop: 2,
-                }}
-              >
-                {quickResult.safeAlternativeOrTiming}
-              </Text>
-            </View>
-
+            />
             <Pressable
-              onPress={handleSpeakQuick}
+              onPress={() => handleRunQuickCheck(queryText)}
               style={[
-                styles.speakBtn,
+                styles.checkBtn,
                 {
                   minHeight: theme.minTouchTarget,
-                  backgroundColor: speakingQuick
-                    ? theme.colors.accentPrimary
-                    : theme.colors.surface,
-                  borderColor: theme.colors.borderStrong,
+                  backgroundColor: theme.colors.accentPrimary,
                 },
               ]}
             >
-              <Ionicons
-                name={
-                  speakingQuick ? 'stop-circle-outline' : 'volume-high-outline'
-                }
-                size={20}
-                color={
-                  speakingQuick
-                    ? theme.colors.white
-                    : theme.colors.accentPrimary
-                }
-              />
               <Text
                 style={{
-                  fontSize: theme.font.sm,
+                  fontSize: theme.font.body,
                   fontWeight: '700',
-                  color: speakingQuick
-                    ? theme.colors.white
-                    : theme.colors.textPrimary,
+                  color: theme.colors.white,
                 }}
               >
-                {speakingQuick ? 'Stop Audio' : 'Read Answer Aloud'}
+                Ask
               </Text>
             </Pressable>
           </View>
-        )}
-      </View>
 
-      {/* Section 2: Full Regimen Harmony & Interaction Audit */}
-      <View style={styles.auditSectionHeader}>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={{
-              fontSize: theme.font.subtitle,
-              fontWeight: '800',
-              color: theme.colors.textPrimary,
-            }}
-          >
-            Daily Regimen Harmony Audit
-          </Text>
-          {theme.showSecondaryMetadata && (
-            <Text
-              style={{
-                fontSize: theme.font.xs,
-                color: theme.colors.textSecondary,
-                marginTop: 2,
-              }}
-            >
-              Powered by Gemini pharmacological reasoning for{' '}
-              {activeProfile.name}
-            </Text>
-          )}
-        </View>
-        <Pressable
-          onPress={() => {
-            triggerSoftImpactHaptic();
-            setAuditLoading(true);
-            auditRegimenApi(activeProfile)
-              .then(setAuditResult)
-              .finally(() => setAuditLoading(false));
-          }}
-          style={[
-            styles.refreshBtn,
-            {
-              minHeight: theme.minTouchTarget,
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <Ionicons
-            name="refresh"
-            size={18}
-            color={theme.colors.accentPrimary}
-          />
-        </Pressable>
-      </View>
+          {/* 4 Simple Tap Suggestions */}
+          <View style={styles.chipRow}>
+            {QUICK_CHIPS.map((chip) => {
+              const active = queryText.toLowerCase() === chip.toLowerCase();
+              return (
+                <Pressable
+                  key={chip}
+                  onPress={() => handleRunQuickCheck(chip)}
+                  style={[
+                    styles.quickChip,
+                    {
+                      minHeight: theme.brainFogMode ? 64 : 38,
+                      backgroundColor: active
+                        ? theme.colors.accentPrimary
+                        : theme.colors.backgroundPrimary,
+                      borderColor: active
+                        ? theme.colors.accentPrimary
+                        : theme.colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: theme.font.sm,
+                      fontWeight: '600',
+                      color: active
+                        ? theme.colors.white
+                        : theme.colors.textPrimary,
+                    }}
+                  >
+                    {chip}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-      {auditLoading || !auditResult ? (
-        <View
-          style={[
-            styles.auditLoadingCard,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <ActivityIndicator size="large" color={theme.colors.accentPrimary} />
-          <Text
-            style={{
-              marginTop: 12,
-              fontSize: theme.font.sm,
-              color: theme.colors.textSecondary,
-            }}
-          >
-            Reviewing prescription spacing & interactions...
-          </Text>
-        </View>
-      ) : (
-        <View style={{ gap: 12 }}>
-          <View
-            style={[
-              styles.summaryBanner,
-              {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
-              },
-            ]}
-          >
-            <Text
-              style={{
-                fontSize: theme.font.bodyLg,
-                fontWeight: '800',
-                color: theme.colors.textPrimary,
-              }}
-            >
-              {auditResult.calmHeadline}
-            </Text>
-            {theme.showSecondaryMetadata && (
+          {checkingQuick && (
+            <View style={styles.inlineLoader}>
+              <ActivityIndicator color={theme.colors.accentPrimary} />
               <Text
                 style={{
                   fontSize: theme.font.sm,
-                  lineHeight: theme.lineHeight.sm,
                   color: theme.colors.textSecondary,
-                  marginTop: 6,
+                  fontWeight: '600',
                 }}
               >
-                {auditResult.reassuranceSummary}
+                Checking against your prescriptions...
               </Text>
-            )}
-          </View>
+            </View>
+          )}
 
-          {auditResult.findings.map((finding) => {
-            const pal = severityPalette(finding.severity);
-            return (
-              <View
-                key={finding.id}
-                style={[
-                  styles.findingCard,
-                  {
-                    backgroundColor: pal.bg,
-                    borderColor: pal.border,
-                  },
-                ]}
+          {quickResult && !checkingQuick && (
+            <View
+              style={[
+                styles.verdictBox,
+                {
+                  backgroundColor: severityPalette(quickResult.severity).bg,
+                  borderColor: severityPalette(quickResult.severity).border,
+                },
+              ]}
+            >
+              <View style={styles.verdictHeader}>
+                <Ionicons
+                  name={severityPalette(quickResult.severity).icon}
+                  size={22}
+                  color={severityPalette(quickResult.severity).fg}
+                />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: theme.font.bodyLg,
+                    fontWeight: '800',
+                    color: severityPalette(quickResult.severity).fg,
+                  }}
+                >
+                  {quickResult.verdictBadge}
+                </Text>
+              </View>
+
+              <Text
+                style={{
+                  fontSize: theme.font.body,
+                  lineHeight: theme.lineHeight.body,
+                  fontWeight: '700',
+                  color: theme.colors.textPrimary,
+                  marginTop: 8,
+                }}
               >
-                <View style={styles.findingTopRow}>
-                  <Ionicons name={pal.icon} size={22} color={pal.fg} />
-                  <Text
-                    style={{
-                      flex: 1,
-                      fontSize: theme.font.body,
-                      fontWeight: '800',
-                      color: pal.fg,
-                    }}
-                  >
-                    {finding.title}
-                  </Text>
-                </View>
+                {quickResult.calmAnswer}
+              </Text>
 
+              {theme.showSecondaryMetadata && (
                 <Text
                   style={{
                     fontSize: theme.font.sm,
@@ -538,37 +320,221 @@ export default function SafetyLabScreen() {
                     marginTop: 6,
                   }}
                 >
-                  {finding.plainExplanation}
+                  {quickResult.whyItMatters}
                 </Text>
+              )}
 
+              <Text
+                style={{
+                  fontSize: theme.font.sm,
+                  lineHeight: theme.lineHeight.sm,
+                  fontWeight: '600',
+                  color: theme.colors.accentPrimary,
+                  marginTop: 10,
+                }}
+              >
+                What to do instead: {quickResult.safeAlternativeOrTiming}
+              </Text>
+
+              {theme.showSecondaryMetadata &&
+                quickResult.labelVerified &&
+                Boolean(quickResult.sourceQuote) && (
+                  <View
+                    style={[
+                      styles.fdaCitationBox,
+                      {
+                        backgroundColor: theme.colors.surface,
+                        borderColor: theme.colors.border,
+                      },
+                    ]}
+                  >
+                    <View style={styles.fdaCitationHeader}>
+                      <Ionicons
+                        name="shield-checkmark-outline"
+                        size={14}
+                        color={theme.colors.accentPrimary}
+                      />
+                      <Text
+                        style={{
+                          fontSize: theme.font.xs,
+                          fontWeight: '800',
+                          color: theme.colors.accentPrimary,
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.4,
+                        }}
+                      >
+                        FDA Label Verified
+                        {quickResult.sourceDrug
+                          ? ` · ${quickResult.sourceDrug}`
+                          : ''}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: theme.font.xs,
+                        lineHeight: theme.lineHeight.sm,
+                        fontStyle: 'italic',
+                        color: theme.colors.textSecondary,
+                        marginTop: 4,
+                      }}
+                    >
+                      &ldquo;{quickResult.sourceQuote}&rdquo;
+                    </Text>
+                  </View>
+                )}
+
+              <Pressable
+                onPress={handleSpeakQuick}
+                style={[
+                  styles.speakBtn,
+                  {
+                    minHeight: theme.minTouchTarget,
+                    backgroundColor: speakingQuick
+                      ? theme.colors.accentPrimary
+                      : theme.colors.surface,
+                    borderColor: theme.colors.borderStrong,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={
+                    speakingQuick ? 'stop-circle-outline' : 'volume-high-outline'
+                  }
+                  size={18}
+                  color={
+                    speakingQuick
+                      ? theme.colors.white
+                      : theme.colors.accentPrimary
+                  }
+                />
                 <Text
                   style={{
                     fontSize: theme.font.sm,
                     fontWeight: '700',
-                    color: theme.colors.textPrimary,
-                    marginTop: 8,
+                    color: speakingQuick
+                      ? theme.colors.white
+                      : theme.colors.textPrimary,
                   }}
                 >
-                  What to do: {finding.actionableStep}
+                  {speakingQuick ? 'Stop Audio' : 'Read Aloud'}
                 </Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
 
-                {finding.timingRecommendation && (
-                  <Text
-                    style={{
-                      fontSize: theme.font.xs,
-                      fontWeight: '600',
-                      color: theme.colors.textSecondary,
-                      marginTop: 4,
-                    }}
+        {/* Progressive Disclosure: Full Schedule Interaction Check */}
+        {activeProfile.medications.length > 0 && (
+          <View>
+            <Pressable
+              onPress={handleToggleFullAudit}
+              style={[
+                styles.auditToggleCard,
+                {
+                  minHeight: theme.minTouchTarget,
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                },
+              ]}
+            >
+              <Ionicons
+                name="sparkles-outline"
+                size={20}
+                color={theme.colors.accentPrimary}
+              />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: theme.font.body,
+                    fontWeight: '700',
+                    color: theme.colors.textPrimary,
+                  }}
+                >
+                  Review all my medications together
+                </Text>
+                <Text
+                  style={{
+                    fontSize: theme.font.xs,
+                    color: theme.colors.textSecondary,
+                    marginTop: 2,
+                  }}
+                >
+                  Checks spacing rules across your {activeProfile.medications.length}{' '}
+                  prescriptions
+                </Text>
+              </View>
+              <Ionicons
+                name={auditOpen ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={theme.colors.textSecondary}
+              />
+            </Pressable>
+
+            {auditOpen && (
+              <View style={{ marginTop: 12, gap: 10 }}>
+                {auditLoading || !auditResult ? (
+                  <View
+                    style={[
+                      styles.auditLoader,
+                      {
+                        backgroundColor: theme.colors.surface,
+                        borderColor: theme.colors.border,
+                      },
+                    ]}
                   >
-                    Timing cue: {finding.timingRecommendation}
-                  </Text>
+                    <ActivityIndicator color={theme.colors.accentPrimary} />
+                    <Text
+                      style={{
+                        fontSize: theme.font.sm,
+                        color: theme.colors.textSecondary,
+                        marginTop: 8,
+                      }}
+                    >
+                      Checking daily schedule harmony...
+                    </Text>
+                  </View>
+                ) : (
+                  auditResult.findings.map((finding) => {
+                    const pal = severityPalette(finding.severity);
+                    return (
+                      <View
+                        key={finding.id}
+                        style={[
+                          styles.findingCard,
+                          {
+                            backgroundColor: pal.bg,
+                            borderColor: pal.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            fontSize: theme.font.body,
+                            fontWeight: '800',
+                            color: pal.fg,
+                          }}
+                        >
+                          {finding.title}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: theme.font.sm,
+                            lineHeight: theme.lineHeight.sm,
+                            color: theme.colors.textPrimary,
+                            marginTop: 4,
+                          }}
+                        >
+                          {finding.actionableStep}
+                        </Text>
+                      </View>
+                    );
+                  })
                 )}
               </View>
-            );
-          })}
-        </View>
-      )}
+            )}
+          </View>
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -579,29 +545,20 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 18,
-    paddingBottom: 44,
+    paddingBottom: 124,
+  },
+  maxWidthWrap: {
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
   },
   card: {
     borderWidth: 1,
-    marginBottom: 22,
-  },
-  chipGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 14,
-  },
-  quickChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1,
-    justifyContent: 'center',
+    marginBottom: 16,
   },
   searchRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 14,
   },
   searchInput: {
     flex: 1,
@@ -610,8 +567,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   checkBtn: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  quickChip: {
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -632,11 +602,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  safeAltBox: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 14,
+  fdaCitationBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 12,
     borderWidth: 1,
+  },
+  fdaCitationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   speakBtn: {
     marginTop: 12,
@@ -647,40 +622,23 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
   },
-  auditSectionHeader: {
+  auditToggleCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 12,
-  },
-  refreshBtn: {
-    width: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  auditLoadingCard: {
-    padding: 28,
-    borderRadius: 22,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryBanner: {
-    padding: 18,
+    gap: 12,
+    padding: 16,
     borderRadius: 20,
     borderWidth: 1,
+  },
+  auditLoader: {
+    padding: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
   },
   findingCard: {
     padding: 16,
     borderRadius: 18,
     borderWidth: 1.5,
-  },
-  findingTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
 });

@@ -1,16 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import {
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   triggerSoftImpactHaptic,
   triggerSuccessHaptic,
+  triggerWarningHaptic,
 } from '../services/haptics';
 import {
   useActiveProfile,
@@ -19,6 +15,7 @@ import {
 } from '../store/useHarborStore';
 
 export const HarborHeader: React.FC = () => {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useHarborTheme();
   const profiles = useHarborStore((s) => s.profiles);
@@ -26,18 +23,17 @@ export const HarborHeader: React.FC = () => {
   const setActiveProfile = useHarborStore((s) => s.setActiveProfile);
   const brainFogMode = useHarborStore((s) => s.brainFogMode);
   const toggleBrainFogMode = useHarborStore((s) => s.toggleBrainFogMode);
+  const reopenOnboarding = useHarborStore((s) => s.reopenOnboarding);
+  const logoutCurrentPerson = useHarborStore((s) => s.logoutCurrentPerson);
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
-  const handleToggleBrainFog = () => {
-    triggerSuccessHaptic();
-    toggleBrainFogMode();
-  };
-
-  const handleSelectProfile = (id: string) => {
-    triggerSoftImpactHaptic();
-    setActiveProfile(id);
+  const handleLogout = async () => {
+    triggerWarningHaptic();
     setSwitcherOpen(false);
+    await logoutCurrentPerson();
+    router.replace('/onboarding');
   };
 
   return (
@@ -45,14 +41,13 @@ export const HarborHeader: React.FC = () => {
       style={[
         styles.container,
         {
-          paddingTop: Math.max(insets.top, 10) + 6,
+          paddingTop: Math.max(insets.top, 10) + 4,
           backgroundColor: theme.colors.backgroundPrimary,
-          borderBottomColor: theme.colors.border,
         },
       ]}
     >
-      <View style={styles.row}>
-        {/* Left: Brand + Active Care Circle Switcher */}
+      <View style={styles.maxWidthRow}>
+        {/* Left: Person Switcher & Account Menu */}
         <Pressable
           onPress={() => {
             triggerSoftImpactHaptic();
@@ -61,18 +56,16 @@ export const HarborHeader: React.FC = () => {
           style={({ pressed }) => [
             styles.profileChip,
             {
-              minHeight: theme.brainFogMode ? 64 : 44,
+              minHeight: theme.brainFogMode ? 64 : 42,
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
               opacity: pressed ? 0.85 : 1,
             },
           ]}
-          accessibilityRole="button"
-          accessibilityLabel={`Current Care Circle profile: ${activeProfile.name}. Tap to switch.`}
         >
           <View
             style={[
-              styles.avatarCircle,
+              styles.avatarDot,
               { backgroundColor: theme.colors.accentSoft },
             ]}
           >
@@ -80,88 +73,92 @@ export const HarborHeader: React.FC = () => {
               style={{
                 color: theme.colors.accentPrimary,
                 fontWeight: '700',
-                fontSize: theme.font.sm,
+                fontSize: theme.font.xs,
               }}
             >
-              {activeProfile.name
-                .split(' ')
-                .map((n) => n[0])
-                .join('')
-                .slice(0, 2)}
+              {activeProfile.name[0]?.toUpperCase() || 'M'}
             </Text>
           </View>
-          <View style={styles.profileTextCol}>
-            {theme.showSecondaryMetadata && (
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '600',
-                  letterSpacing: 0.4,
-                  color: theme.colors.accentPrimary,
-                  textTransform: 'uppercase',
-                }}
-              >
-                HarborDose
-              </Text>
-            )}
-            <Text
-              numberOfLines={1}
-              style={{
-                fontSize: theme.font.sm,
-                fontWeight: '700',
-                color: theme.colors.textPrimary,
-              }}
-            >
-              {activeProfile.name.split(' ')[0]}
-            </Text>
-          </View>
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: theme.font.sm,
+              fontWeight: '700',
+              color: theme.colors.textPrimary,
+            }}
+          >
+            {activeProfile.name.split(' ')[0]}
+          </Text>
           <Ionicons
             name="chevron-down"
-            size={theme.brainFogMode ? 20 : 16}
+            size={15}
             color={theme.colors.textSecondary}
           />
         </Pressable>
 
-        {/* Right: Persistent Global Brain-Fog Large Mode Toggle */}
-        <Pressable
-          onPress={handleToggleBrainFog}
-          style={({ pressed }) => [
-            styles.brainFogToggle,
-            {
-              minHeight: theme.brainFogMode ? 64 : 44,
-              backgroundColor: brainFogMode
-                ? theme.colors.accentPrimary
-                : theme.colors.surface,
-              borderColor: brainFogMode
-                ? theme.colors.accentPrimary
-                : theme.colors.borderStrong,
-              opacity: pressed ? 0.88 : 1,
-            },
-          ]}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: brainFogMode }}
-          accessibilityLabel="Brain-Fog Large Mode toggle"
-        >
-          <Ionicons
-            name={brainFogMode ? 'sparkles' : 'eye-outline'}
-            size={brainFogMode ? 22 : 18}
-            color={brainFogMode ? theme.colors.white : theme.colors.accentPrimary}
-          />
-          <Text
-            style={{
-              fontSize: theme.font.xs,
-              fontWeight: '700',
-              color: brainFogMode
-                ? theme.colors.white
-                : theme.colors.textPrimary,
+        {/* Right: ? Quick Guide + Aa Large Toggle */}
+        <View style={styles.rightRow}>
+          <Pressable
+            onPress={() => {
+              triggerSoftImpactHaptic();
+              setGuideOpen(true);
             }}
+            style={[
+              styles.helpCircle,
+              {
+                width: theme.brainFogMode ? 64 : 42,
+                height: theme.brainFogMode ? 64 : 42,
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+            accessibilityLabel="How HarborDose works"
           >
-            {brainFogMode ? 'Calm XL: ON' : 'Brain-Fog XL'}
-          </Text>
-        </Pressable>
+            <Ionicons
+              name="help"
+              size={theme.brainFogMode ? 22 : 18}
+              color={theme.colors.textSecondary}
+            />
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              triggerSuccessHaptic();
+              toggleBrainFogMode();
+            }}
+            style={({ pressed }) => [
+              styles.aaToggle,
+              {
+                minHeight: theme.brainFogMode ? 64 : 42,
+                backgroundColor: brainFogMode
+                  ? theme.colors.accentPrimary
+                  : theme.colors.surface,
+                borderColor: brainFogMode
+                  ? theme.colors.accentPrimary
+                  : theme.colors.border,
+                opacity: pressed ? 0.88 : 1,
+              },
+            ]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: brainFogMode }}
+            accessibilityLabel="Large simple text mode"
+          >
+            <Text
+              style={{
+                fontSize: theme.font.sm,
+                fontWeight: '800',
+                color: brainFogMode
+                  ? theme.colors.white
+                  : theme.colors.textPrimary,
+              }}
+            >
+              Aa {brainFogMode ? 'Large ON' : 'Large'}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* Care Circle Switcher Modal */}
+      {/* Switch Person & Log Out Sheet */}
       <Modal
         visible={switcherOpen}
         transparent
@@ -169,13 +166,13 @@ export const HarborHeader: React.FC = () => {
         onRequestClose={() => setSwitcherOpen(false)}
       >
         <Pressable
-          style={[styles.modalBackdrop, { backgroundColor: theme.colors.overlay }]}
+          style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}
           onPress={() => setSwitcherOpen(false)}
         >
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={[
-              styles.modalSheet,
+              styles.sheet,
               {
                 backgroundColor: theme.colors.surface,
                 borderColor: theme.colors.border,
@@ -185,37 +182,32 @@ export const HarborHeader: React.FC = () => {
             <Text
               style={{
                 fontSize: theme.font.subtitle,
-                fontWeight: '700',
+                fontWeight: '800',
                 color: theme.colors.textPrimary,
-                marginBottom: 4,
+                marginBottom: 12,
               }}
             >
-              Care Circle Profiles
-            </Text>
-            <Text
-              style={{
-                fontSize: theme.font.sm,
-                color: theme.colors.textSecondary,
-                marginBottom: 16,
-              }}
-            >
-              Switch gently between family members you support.
+              Active Profile
             </Text>
 
             {profiles.map((profile) => {
-              const isSelected = profile.id === activeProfile.id;
+              const selected = profile.id === activeProfile.id;
               return (
                 <Pressable
                   key={profile.id}
-                  onPress={() => handleSelectProfile(profile.id)}
+                  onPress={() => {
+                    triggerSoftImpactHaptic();
+                    setActiveProfile(profile.id);
+                    setSwitcherOpen(false);
+                  }}
                   style={[
-                    styles.profileOption,
+                    styles.profileRow,
                     {
                       minHeight: theme.minTouchTarget,
-                      backgroundColor: isSelected
+                      backgroundColor: selected
                         ? theme.colors.accentSoft
                         : theme.colors.backgroundPrimary,
-                      borderColor: isSelected
+                      borderColor: selected
                         ? theme.colors.accentPrimary
                         : theme.colors.border,
                     },
@@ -229,28 +221,197 @@ export const HarborHeader: React.FC = () => {
                         color: theme.colors.textPrimary,
                       }}
                     >
-                      {profile.name} ({profile.age})
+                      {profile.name}
                     </Text>
                     <Text
                       style={{
-                        fontSize: theme.font.sm,
+                        fontSize: theme.font.xs,
                         color: theme.colors.textSecondary,
                         marginTop: 2,
                       }}
                     >
-                      {profile.relation} • {profile.medications.length} active meds
+                      {profile.relation} • {profile.medications.length} meds
                     </Text>
                   </View>
-                  {isSelected && (
+                  {selected && (
                     <Ionicons
                       name="checkmark-circle"
-                      size={24}
+                      size={22}
                       color={theme.colors.accentPrimary}
                     />
                   )}
                 </Pressable>
               );
             })}
+
+            <View
+              style={[
+                styles.divider,
+                { backgroundColor: theme.colors.border },
+              ]}
+            />
+
+            <Pressable
+              onPress={handleLogout}
+              style={[
+                styles.logoutBtn,
+                {
+                  minHeight: theme.minTouchTarget,
+                  backgroundColor: theme.colors.criticalSoft,
+                  borderColor: theme.colors.criticalBorder,
+                },
+              ]}
+            >
+              <Ionicons
+                name="log-out-outline"
+                size={20}
+                color={theme.colors.critical}
+              />
+              <Text
+                style={{
+                  fontSize: theme.font.body,
+                  fontWeight: '700',
+                  color: theme.colors.critical,
+                }}
+              >
+                Log Out & Clear Profile
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Quick Help Cheat-Sheet Modal */}
+      <Modal
+        visible={guideOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGuideOpen(false)}
+      >
+        <Pressable
+          style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}
+          onPress={() => setGuideOpen(false)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                fontSize: theme.font.title,
+                fontWeight: '800',
+                color: theme.colors.textPrimary,
+              }}
+            >
+              Quick Guide
+            </Text>
+            <Text
+              style={{
+                fontSize: theme.font.sm,
+                color: theme.colors.textSecondary,
+                marginTop: 4,
+                marginBottom: 16,
+              }}
+            >
+              HarborDose helps you take daily prescriptions safely without
+              second-guessing.
+            </Text>
+
+            <View style={{ gap: 12 }}>
+              {[
+                [
+                  'Today',
+                  'Tap "Take Dose" as you swallow each pill. It records the time + a physical habit so you never take two by mistake.',
+                ],
+                [
+                  'Add Pill',
+                  'Snap a photo of any prescription bottle to add it automatically.',
+                ],
+                [
+                  'Ask Safety',
+                  'Check if painkillers (like Advil), coffee, or foods are safe with your meds.',
+                ],
+                [
+                  'Family',
+                  'Copy a 1-tap text update for family, manage profiles, or log out.',
+                ],
+              ].map(([title, desc]) => (
+                <View key={title}>
+                  <Text
+                    style={{
+                      fontSize: theme.font.body,
+                      fontWeight: '700',
+                      color: theme.colors.textPrimary,
+                    }}
+                  >
+                    • {title}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: theme.font.sm,
+                      lineHeight: theme.lineHeight.sm,
+                      color: theme.colors.textSecondary,
+                      marginLeft: 12,
+                    }}
+                  >
+                    {desc}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={{ marginTop: 20, gap: 10 }}>
+              <Pressable
+                onPress={() => setGuideOpen(false)}
+                style={[
+                  styles.sheetPrimaryBtn,
+                  {
+                    minHeight: theme.minTouchTarget,
+                    backgroundColor: theme.colors.accentPrimary,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    fontSize: theme.font.body,
+                    fontWeight: '700',
+                    color: theme.colors.white,
+                  }}
+                >
+                  Got It
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setGuideOpen(false);
+                  reopenOnboarding();
+                }}
+                style={[
+                  styles.sheetSecondaryBtn,
+                  {
+                    minHeight: theme.minTouchTarget,
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    fontSize: theme.font.sm,
+                    fontWeight: '600',
+                    color: theme.colors.textSecondary,
+                  }}
+                >
+                  Replay Setup Walkthrough
+                </Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -261,61 +422,92 @@ export const HarborHeader: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 18,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
+    paddingBottom: 10,
   },
-  row: {
+  maxWidthRow: {
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
   },
   profileChip: {
-    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
+    gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 7,
     borderRadius: 999,
     borderWidth: 1,
   },
-  avatarCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+  avatarDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileTextCol: {
-    flexShrink: 1,
-  },
-  brainFogToggle: {
+  rightRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1.5,
+    gap: 8,
   },
-  modalBackdrop: {
+  helpCircle: {
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aaToggle: {
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backdrop: {
     flex: 1,
     justifyContent: 'center',
     padding: 22,
   },
-  modalSheet: {
+  sheet: {
+    width: '100%',
+    maxWidth: 460,
+    alignSelf: 'center',
     borderRadius: 24,
     padding: 22,
     borderWidth: 1,
   },
-  profileOption: {
+  profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
     borderRadius: 16,
     borderWidth: 1.5,
-    marginBottom: 10,
-    gap: 12,
+    marginBottom: 8,
+  },
+  divider: {
+    height: 1,
+    marginVertical: 12,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 16,
+    borderWidth: 1.5,
+  },
+  sheetPrimaryBtn: {
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetSecondaryBtn: {
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

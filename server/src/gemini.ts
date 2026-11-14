@@ -21,12 +21,14 @@ import {
 import { ensurePlayableAudio } from './wavUtils.js';
 import { formatLabelsForPrompt, getDrugLabels, quoteIsInLabel } from './openfda.js';
 
-export const GEMINI_MODEL = 'gemini-4-hydrogen';
+// Ultra-low-latency Gemini Flash-Lite models (~1.5-3s live response time)
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+export const GEMINI_FAST_BACKUP_MODEL = 'gemini-3.1-flash-lite';
 
 const HARBOR_SYSTEM_INSTRUCTION = `You are HarborDose Clinical & ADHD Companion AI.
-You assist adults living with severe ADHD (including older adults managing blood thinners, statins, thyroid medications, stimulants, and blood pressure medications) alongside their loving family caregivers.
+You assist adults living with ADHD (including older adults managing blood thinners, statins, thyroid medications, stimulants, and blood pressure medications) alongside their family caregivers.
 Rules:
-1. Zero-Shame Tone: Never scold, alarm unnecessarily, or use harsh words like "FAILED", "NON-COMPLIANT", or "MISSED!". Speak like a calm, experienced clinical pharmacist sitting beside a warm cup of tea.
+1. Zero-Shame Tone: Never scold, alarm unnecessarily, or use harsh words like "FAILED", "NON-COMPLIANT", or "MISSED!". Speak like a calm, experienced clinical pharmacist.
 2. Cognitive Clarity: Keep sentences concise, scannable, concrete, and unambiguous for someone experiencing ADHD brain fog.
 3. High-Stakes Safety First: Always guard against accidental double-dosing (especially blood thinners, blood pressure meds, stimulants, and thyroid meds) and flag major drug-drug or food-drug interactions clearly.
 4. Encourage Physical Memory Anchors: Suggest tactile real-world cues (flipping a bottle cap, moving a pill dish, placing water beside a kettle).`;
@@ -42,6 +44,41 @@ function getClient(): GoogleGenAI | null {
 export function isGeminiConfigured(): boolean {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   return Boolean(apiKey && apiKey !== 'your_gemini_api_key_here');
+}
+
+async function generateFastStructuredJson<T>(
+  ai: GoogleGenAI,
+  contents: any,
+  responseSchema: Schema,
+  temperature = 0.2
+): Promise<{ data: T; modelUsed: string }> {
+  const modelsToTry = [GEMINI_MODEL, GEMINI_FAST_BACKUP_MODEL];
+  let lastError: unknown;
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction: HARBOR_SYSTEM_INSTRUCTION,
+          temperature,
+          responseMimeType: 'application/json',
+          responseSchema,
+          ...(model === 'gemini-3.1-flash-lite'
+            ? { thinkingConfig: { thinkingBudget: 0 } }
+            : {}),
+        },
+      });
+
+      const parsed = JSON.parse(response.text || '{}') as T;
+      return { data: parsed, modelUsed: model };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError;
 }
 
 const safetyFindingSchema: Schema = {
@@ -111,7 +148,8 @@ export async function scanPrescriptionWithGemini(params: {
               },
               secondaryColor: {
                 type: Type.STRING,
-                description: 'Optional 6-digit CSS hex color for two-tone capsules',
+                description:
+                  'Optional 6-digit CSS hex color for two-tone capsules',
               },
               imprintCode: { type: Type.STRING },
             },
@@ -189,25 +227,17 @@ Existing active medications: ${JSON.stringify(
     )}.
 ${params.labelTextHint ? `Additional text/label hint from user: "${params.labelTextHint}"` : ''}
 
-Extract accurate structured medication details including realistic FDA-accurate visual appearance (shape, hex colors, imprint code) if recognizable or printed on the label, plain-English purpose, food rules, calm zero-shame missed-dose guidance, supply count (default 30 if not visible), and check for any clinical interactions or duplicate therapy against existing medications.`,
+Extract accurate structured medication details including realistic FDA-accurate visual appearance (shape, hex colors, imprint code), concise plain-English purpose, food rules, calm zero-shame missed-dose guidance, supply count (default 30 if not visible), and check for any clinical interactions or duplicate therapy against existing medications.`,
   });
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ role: 'user', parts }],
-      config: {
-        systemInstruction: HARBOR_SYSTEM_INSTRUCTION,
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseSchema,
-      },
-    });
+    const { data, modelUsed } = await generateFastStructuredJson<
+      Omit<ScanPrescriptionResult, 'modelUsed'>
+    >(ai, [{ role: 'user', parts }], responseSchema, 0.2);
 
-    const parsed = JSON.parse(response.text || '{}');
     return {
-      ...parsed,
-      modelUsed: GEMINI_MODEL,
+      ...data,
+      modelUsed,
     };
   } catch (err) {
     console.error('[Gemini scan error, using resilient clinical fallback]:', err);
@@ -248,30 +278,23 @@ export async function auditRegimenWithGemini(
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: `Perform a comprehensive, calm pharmacological interaction, food-rule, and timing-harmony review for:
+    const { data, modelUsed } = await generateFastStructuredJson<
+      Omit<RegimenAuditResult, 'generatedAtISO' | 'modelUsed'>
+    >(
+      ai,
+      `Perform a concise, calm pharmacological interaction, food-rule, and timing-harmony review for:
 Patient: ${patient.name}, Age ${patient.age}, Conditions: ${patient.conditions.join(', ')}.
-Medications: ${JSON.stringify(patient.medications, null, 2)}
+Medications: ${JSON.stringify(patient.medications)}
 
-Evaluate:
-1. Drug-drug interactions & additive blood pressure / bleeding / CNS effects.
-2. Important OTC dangers to avoid (e.g., NSAIDs like ibuprofen/naproxen with blood thinners; decongestants with hypertension/stimulants).
-3. Food & beverage spacing rules (e.g., grapefruit with certain statins, Vitamin K consistency with warfarin, coffee/calcium spacing with levothyroxine).
-4. Practical ADHD-friendly daily habit bundling tips.`,
-      config: {
-        systemInstruction: HARBOR_SYSTEM_INSTRUCTION,
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseSchema,
-      },
-    });
+Return 2 to 4 concise, high-impact findings covering major OTC dangers (e.g. NSAIDs with blood thinners), food spacing (e.g. grapefruit or coffee/calcium), and habit bundling.`,
+      responseSchema,
+      0.2
+    );
 
-    const parsed = JSON.parse(response.text || '{}');
     return {
-      ...parsed,
+      ...data,
       generatedAtISO: new Date().toISOString(),
-      modelUsed: GEMINI_MODEL,
+      modelUsed,
     };
   } catch (err) {
     console.error('[Gemini audit error, using resilient clinical fallback]:', err);
@@ -359,30 +382,23 @@ Give a crystal-clear, ADHD-friendly verdict ('safe', 'caution', or 'critical'), 
   });
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ role: 'user', parts }],
-      config: {
-        systemInstruction: HARBOR_SYSTEM_INSTRUCTION,
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseSchema,
-      },
-    });
+    const { data, modelUsed } = await generateFastStructuredJson<
+      Omit<QuickCheckResult, 'modelUsed' | 'labelVerified'>
+    >(ai, [{ role: 'user', parts }], responseSchema, 0.2);
 
-    const parsed = JSON.parse(response.text || '{}');
     const labelVerified = quoteIsInLabel(
-      parsed.sourceQuote || '',
-      parsed.sourceDrug || '',
+      data.sourceQuote || '',
+      data.sourceDrug || '',
       labels
     );
+
     return {
-      ...parsed,
+      ...data,
       // Never show a quote we couldn't find in the real label.
-      sourceQuote: labelVerified ? parsed.sourceQuote : '',
-      sourceDrug: labelVerified ? parsed.sourceDrug : '',
+      sourceQuote: labelVerified ? data.sourceQuote : '',
+      sourceDrug: labelVerified ? data.sourceDrug : '',
       labelVerified,
-      modelUsed: GEMINI_MODEL,
+      modelUsed,
     };
   } catch (err) {
     console.error('[Gemini quick-check error, using resilient clinical fallback]:', err);
@@ -424,7 +440,7 @@ export async function getMissedDoseGuidanceWithGemini(params: {
       spokenScript: {
         type: Type.STRING,
         description:
-          'A warm, soothing 3-4 sentence spoken readout suitable for text-to-speech for an overwhelmed patient.',
+          'A warm, soothing 3-sentence spoken readout suitable for text-to-speech.',
       },
     },
     required: [
@@ -438,31 +454,27 @@ export async function getMissedDoseGuidanceWithGemini(params: {
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: `Patient ${params.patient.name} (Age ${params.patient.age}) needs zero-shame, high-safety support for ${params.medication.name} (${params.medication.genericName} ${params.medication.dosage}) scheduled for the ${params.windowMissed} window.
+    const { data, modelUsed } = await generateFastStructuredJson<
+      Omit<MissedDoseAdviceResult, 'modelUsed'>
+    >(
+      ai,
+      `Patient ${params.patient.name} (Age ${params.patient.age}) needs zero-shame, high-safety support for ${params.medication.name} (${params.medication.genericName} ${params.medication.dosage}) scheduled for ${params.windowMissed}.
 Current local time: ${params.currentLocalTime}.
 Situation: ${
         params.unsureIfTaken
-          ? 'Patient has ADHD working-memory fog and is UNSURE whether they already swallowed this pill a few minutes ago.'
-          : 'Patient realized the usual time window ran late and wants to know the safest next step.'
+          ? 'Patient has ADHD working-memory fog and is UNSURE whether they already swallowed this pill.'
+          : 'Patient realized the usual time window ran late.'
       }
 Medication details: ${JSON.stringify(params.medication)}
-Today's logged doses: ${JSON.stringify(params.todayLogs)}
 
-Provide calm, concrete step-by-step actions, explicit anti-double-dose guidance tailored to ${params.medication.genericName}, red-flag symptoms that warrant calling a pharmacist/doctor, and a soothing spokenScript.`,
-      config: {
-        systemInstruction: HARBOR_SYSTEM_INSTRUCTION,
-        temperature: 0.25,
-        responseMimeType: 'application/json',
-        responseSchema,
-      },
-    });
+Provide 3 short step-by-step actions, explicit anti-double-dose guidance, and a soothing spokenScript.`,
+      responseSchema,
+      0.25
+    );
 
-    const parsed = JSON.parse(response.text || '{}');
     return {
-      ...parsed,
-      modelUsed: GEMINI_MODEL,
+      ...data,
+      modelUsed,
     };
   } catch (err) {
     console.error('[Gemini missed-dose error, using resilient clinical fallback]:', err);
@@ -490,7 +502,7 @@ export async function generateFamilyUpdateWithGemini(params: {
       smsText: {
         type: Type.STRING,
         description:
-          'Ready-to-paste warm family text message under 450 characters with checkmarks, timestamps, memory anchors used, and any gentle refill note.',
+          'Ready-to-paste warm family text message under 400 characters with checkmarks, timestamps, memory anchors used, and any gentle refill note.',
       },
       calmSummaryHeadline: { type: Type.STRING },
       dosesCompletedCount: { type: Type.INTEGER },
@@ -510,9 +522,11 @@ export async function generateFamilyUpdateWithGemini(params: {
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: `Create a warm, dignified 1-click Family Care Circle SMS update for ${params.patient.name} (${params.patient.relation}, age ${params.patient.age}) at ${params.currentLocalTime}.
+    const { data, modelUsed } = await generateFastStructuredJson<
+      Omit<FamilyUpdateResult, 'modelUsed'>
+    >(
+      ai,
+      `Create a warm, dignified 1-click Family Care Circle SMS update for ${params.patient.name} (${params.patient.relation}, age ${params.patient.age}) at ${params.currentLocalTime}.
 Medications & Supply: ${JSON.stringify(
         params.patient.medications.map((m) => ({
           id: m.id,
@@ -523,21 +537,15 @@ Medications & Supply: ${JSON.stringify(
         }))
       )}
 Today's Dose Logs: ${JSON.stringify(params.todayLogs)}
-Caregiver Notes: ${JSON.stringify(params.patient.caregiverNotes)}
 
-Never sound controlling or judgmental. Highlight completed windows, any physical memory anchors logged, remaining upcoming windows, and flag any medication with supplyRemaining <= 7.`,
-      config: {
-        systemInstruction: HARBOR_SYSTEM_INSTRUCTION,
-        temperature: 0.35,
-        responseMimeType: 'application/json',
-        responseSchema,
-      },
-    });
+Never sound controlling or judgmental. Highlight completed windows, physical memory cues used, and any medication with supplyRemaining <= 7.`,
+      responseSchema,
+      0.3
+    );
 
-    const parsed = JSON.parse(response.text || '{}');
     return {
-      ...parsed,
-      modelUsed: GEMINI_MODEL,
+      ...data,
+      modelUsed,
     };
   } catch (err) {
     console.error('[Gemini family-update error, using resilient fallback]:', err);
@@ -561,7 +569,7 @@ export async function generateEmpatheticAudioWithGemini(
   try {
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
-      contents: `Read the following medication guidance aloud in a calm, warm, reassuring, unhurried pace for a patient who wants gentle clarity:\n\n"${cleanText}"`,
+      contents: `Read the following medication guidance aloud in a calm, warm, reassuring pace:\n\n"${cleanText}"`,
       config: {
         responseModalities: ['AUDIO'],
         speechConfig: {
@@ -570,6 +578,9 @@ export async function generateEmpatheticAudioWithGemini(
               voiceName: 'Aoede',
             },
           },
+        },
+        httpOptions: {
+          timeout: 6000,
         },
       },
     });
@@ -594,11 +605,7 @@ export async function generateEmpatheticAudioWithGemini(
       fallbackText: cleanText,
       modelUsed: `${GEMINI_MODEL} (text-fallback)`,
     };
-  } catch (err) {
-    console.warn(
-      '[Gemini audio modality unavailable or errored; client will use instant expo-speech fallback]:',
-      err
-    );
+  } catch {
     return {
       fallbackText: cleanText,
       modelUsed: 'expo-speech-fallback',
