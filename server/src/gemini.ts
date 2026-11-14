@@ -19,6 +19,7 @@ import {
   buildFallbackScanResult,
 } from './clinicalFallbacks.js';
 import { ensurePlayableAudio } from './wavUtils.js';
+import { formatLabelsForPrompt, getDrugLabels, quoteIsInLabel } from './openfda.js';
 
 export const GEMINI_MODEL = 'gemini-4-hydrogen';
 
@@ -302,6 +303,8 @@ export async function quickSafetyCheckWithGemini(params: {
       calmAnswer: { type: Type.STRING },
       whyItMatters: { type: Type.STRING },
       safeAlternativeOrTiming: { type: Type.STRING },
+      sourceQuote: { type: Type.STRING },
+      sourceDrug: { type: Type.STRING },
     },
     required: [
       'queryItem',
@@ -310,8 +313,14 @@ export async function quickSafetyCheckWithGemini(params: {
       'calmAnswer',
       'whyItMatters',
       'safeAlternativeOrTiming',
+      'sourceQuote',
+      'sourceDrug',
     ],
   };
+
+  const labels = await getDrugLabels(
+    params.patient.medications.map((m) => m.genericName || m.name)
+  );
 
   const parts: Array<
     { text: string } | { inlineData: { data: string; mimeType: string } }
@@ -337,6 +346,15 @@ export async function quickSafetyCheckWithGemini(params: {
 Active Medications: ${JSON.stringify(params.patient.medications)}
 Today's Logged Doses so far: ${JSON.stringify(params.todayLogs)}
 
+OFFICIAL FDA LABELS (your ONLY allowed source of drug-safety facts):
+${formatLabelsForPrompt(labels)}
+
+Rules for this answer:
+- Base the verdict ONLY on the FDA label text above. Do not use outside knowledge.
+- Copy into "sourceQuote" ONE sentence, word for word, from the label that supports your verdict, and put that label's drug name in "sourceDrug".
+- If the labels do not address '${params.queryItem}', set severity to 'caution', set sourceQuote and sourceDrug to empty strings, and say plainly that the label doesn't cover it and they should ask their pharmacist.
+- Never tell anyone to change, skip, or double a dose. Point them to their pharmacist or doctor.
+
 Give a crystal-clear, ADHD-friendly verdict ('safe', 'caution', or 'critical'), plain-English explanation, and a safe alternative or exact spacing instruction.`,
   });
 
@@ -353,8 +371,17 @@ Give a crystal-clear, ADHD-friendly verdict ('safe', 'caution', or 'critical'), 
     });
 
     const parsed = JSON.parse(response.text || '{}');
+    const labelVerified = quoteIsInLabel(
+      parsed.sourceQuote || '',
+      parsed.sourceDrug || '',
+      labels
+    );
     return {
       ...parsed,
+      // Never show a quote we couldn't find in the real label.
+      sourceQuote: labelVerified ? parsed.sourceQuote : '',
+      sourceDrug: labelVerified ? parsed.sourceDrug : '',
+      labelVerified,
       modelUsed: GEMINI_MODEL,
     };
   } catch (err) {
