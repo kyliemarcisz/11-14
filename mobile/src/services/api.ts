@@ -38,6 +38,39 @@ export function getApiBaseUrl(): string {
   return 'http://localhost:4000';
 }
 
+export interface GeminiHealthStatus {
+  ok: boolean;
+  geminiConfigured: boolean;
+  model: string;
+}
+
+export async function checkGeminiHealthApi(): Promise<GeminiHealthStatus> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${getApiBaseUrl()}/api/health`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = (await res.json()) as {
+        status?: string;
+        model?: string;
+        geminiConfigured?: boolean;
+      };
+      return {
+        ok: data.status === 'ok',
+        geminiConfigured: Boolean(data.geminiConfigured),
+        model: data.model || 'gemini-3.5-flash-lite',
+      };
+    }
+  } catch {
+    // Offline fallback
+  }
+  return { ok: false, geminiConfigured: false, model: 'offline' };
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 22000);

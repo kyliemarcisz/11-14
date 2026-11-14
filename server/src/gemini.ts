@@ -108,6 +108,45 @@ const safetyFindingSchema: Schema = {
   ],
 };
 
+function parseInlineImagePart(
+  imageBase64?: string,
+  mimeType?: string
+): { inlineData: { data: string; mimeType: string } } | null {
+  if (!imageBase64) return null;
+  const trimmed = imageBase64.trim();
+  if (!trimmed) return null;
+
+  const prefixMatch = trimmed.match(/^data:([^;]+);base64,/i);
+  const detectedMime = prefixMatch?.[1]?.toLowerCase();
+  const cleanBase64 = trimmed
+    .replace(/^data:[^;]+;base64,/i, '')
+    .replace(/\s+/g, '');
+
+  if (!cleanBase64 || cleanBase64.length < 64) return null;
+
+  const allowedMimes = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+  ]);
+  const candidateMime = (mimeType || detectedMime || 'image/jpeg').toLowerCase();
+  const safeMime =
+    candidateMime === 'image/jpg'
+      ? 'image/jpeg'
+      : allowedMimes.has(candidateMime)
+        ? candidateMime
+        : 'image/jpeg';
+
+  return {
+    inlineData: {
+      data: cleanBase64,
+      mimeType: safeMime,
+    },
+  };
+}
+
 export async function scanPrescriptionWithGemini(params: {
   imageBase64?: string;
   mimeType?: string;
@@ -197,25 +236,8 @@ export async function scanPrescriptionWithGemini(params: {
     ],
   };
 
-  const parts: Array<
-    { text: string } | { inlineData: { data: string; mimeType: string } }
-  > = [];
-
-  if (params.imageBase64) {
-    const cleanBase64 = params.imageBase64.replace(
-      /^data:image\/[a-zA-Z0-9+.-]+;base64,/,
-      ''
-    );
-    parts.push({
-      inlineData: {
-        data: cleanBase64,
-        mimeType: params.mimeType || 'image/jpeg',
-      },
-    });
-  }
-
-  parts.push({
-    text: `Parse this prescription bottle photo, pill photo, or hospital discharge note for patient ${params.patient.name} (age ${params.patient.age}, conditions: ${params.patient.conditions.join(', ')}).
+  const promptPart = {
+    text: `Parse this prescription bottle photo, pill photo, or hospital discharge note for patient ${params.patient.name} (age ${params.patient.age}, conditions: ${params.patient.conditions.join(', ') || 'General'}).
 Existing active medications: ${JSON.stringify(
       params.patient.medications.map((m) => ({
         name: m.name,
@@ -228,7 +250,12 @@ Existing active medications: ${JSON.stringify(
 ${params.labelTextHint ? `Additional text/label hint from user: "${params.labelTextHint}"` : ''}
 
 Extract accurate structured medication details including realistic FDA-accurate visual appearance (shape, hex colors, imprint code), concise plain-English purpose, food rules, calm zero-shame missed-dose guidance, supply count (default 30 if not visible), and check for any clinical interactions or duplicate therapy against existing medications.`,
-  });
+  };
+
+  const imagePart = parseInlineImagePart(params.imageBase64, params.mimeType);
+  const parts: Array<
+    { text: string } | { inlineData: { data: string; mimeType: string } }
+  > = imagePart ? [imagePart, promptPart] : [promptPart];
 
   try {
     const { data, modelUsed } = await generateFastStructuredJson<
@@ -240,6 +267,20 @@ Extract accurate structured medication details including realistic FDA-accurate 
       modelUsed,
     };
   } catch (err) {
+    // If image decoding failed in Gemini but a text hint was provided, retry text-only with live Gemini
+    if (imagePart && params.labelTextHint?.trim()) {
+      try {
+        const { data, modelUsed } = await generateFastStructuredJson<
+          Omit<ScanPrescriptionResult, 'modelUsed'>
+        >(ai, [{ role: 'user', parts: [promptPart] }], responseSchema, 0.2);
+        return {
+          ...data,
+          modelUsed,
+        };
+      } catch (retryErr) {
+        console.error('[Gemini text-retry scan error]:', retryErr);
+      }
+    }
     console.error('[Gemini scan error, using resilient clinical fallback]:', err);
     return buildFallbackScanResult(params.patient, params.labelTextHint);
   }
@@ -345,22 +386,10 @@ export async function quickSafetyCheckWithGemini(params: {
     params.patient.medications.map((m) => m.genericName || m.name)
   );
 
+  const imagePart = parseInlineImagePart(params.imageBase64, params.mimeType);
   const parts: Array<
     { text: string } | { inlineData: { data: string; mimeType: string } }
-  > = [];
-
-  if (params.imageBase64) {
-    const cleanBase64 = params.imageBase64.replace(
-      /^data:image\/[a-zA-Z0-9+.-]+;base64,/,
-      ''
-    );
-    parts.push({
-      inlineData: {
-        data: cleanBase64,
-        mimeType: params.mimeType || 'image/jpeg',
-      },
-    });
-  }
+  > = imagePart ? [imagePart] : [];
 
   parts.push({
     text: `Patient ${params.patient.name} (Age ${params.patient.age}, Conditions: ${params.patient.conditions.join(', ')}) asks:

@@ -11,32 +11,139 @@ import {
   TimeWindow,
 } from '@shared/types';
 
-function getApiBase(): string {
-  const envUrl = import.meta.env.VITE_API_URL as string | undefined;
-  return envUrl ? envUrl.replace(/\/$/, '') : '';
+export interface GeminiHealthStatus {
+  ok: boolean;
+  geminiConfigured: boolean;
+  model: string;
+}
+
+function getCandidateBases(): string[] {
+  const envUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  if (envUrl) {
+    return [envUrl.replace(/\/$/, '')];
+  }
+  // Primary: same-origin Vite `/api` proxy -> http://localhost:4000
+  // Backup: direct localhost:4000 (e.g. if running `vite preview` without dev proxy)
+  return ['', 'http://localhost:4000'];
+}
+
+export function isLiveGeminiModel(modelUsed?: string): boolean {
+  if (!modelUsed) return false;
+  const lower = modelUsed.toLowerCase();
+  return (
+    lower.includes('gemini') &&
+    !lower.includes('fallback') &&
+    !lower.includes('offline')
+  );
+}
+
+export async function checkGeminiHealthApi(): Promise<GeminiHealthStatus> {
+  for (const base of getCandidateBases()) {
+    try {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`${base}/api/health`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      window.clearTimeout(timer);
+      if (res.ok) {
+        const data = (await res.json()) as {
+          status?: string;
+          model?: string;
+          geminiConfigured?: boolean;
+        };
+        return {
+          ok: data.status === 'ok',
+          geminiConfigured: Boolean(data.geminiConfigured),
+          model: data.model || 'gemini-3.5-flash-lite',
+        };
+      }
+    } catch {
+      // Try next base
+    }
+  }
+  return {
+    ok: false,
+    geminiConfigured: false,
+    model: 'offline',
+  };
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 18000);
+  let lastErr: unknown;
 
-  try {
-    const res = await fetch(`${getApiBase()}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+  for (const base of getCandidateBases()) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 28000);
 
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+    try {
+      const res = await fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return (await res.json()) as T;
+    } catch (err) {
+      lastErr = err;
+    } finally {
+      window.clearTimeout(timeout);
     }
-    return (await res.json()) as T;
-  } finally {
-    window.clearTimeout(timeout);
   }
+
+  throw lastErr ?? new Error('API unreachable');
+}
+
+/**
+ * Normalizes any browser image File onto a canvas (max 1280px) and encodes
+ * as clean `image/jpeg` so Gemini Vision receives a fast, valid image.
+ */
+export function normalizeImageFileToJpegDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.onload = () => {
+      const rawDataUrl = String(reader.result || '');
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1280;
+        let width = img.naturalWidth || img.width || 800;
+        let height = img.naturalHeight || img.height || 600;
+
+        if (width > maxDim || height > maxDim) {
+          const scale = Math.min(maxDim / width, maxDim / height);
+          width = Math.max(1, Math.round(width * scale));
+          height = Math.max(1, Math.round(height * scale));
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(rawDataUrl);
+          return;
+        }
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.84));
+      };
+      img.onerror = () => {
+        // If browser cannot render format onto canvas (e.g. raw HEIC on Chrome), pass original
+        resolve(rawDataUrl);
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 export async function scanPrescriptionApi(params: {

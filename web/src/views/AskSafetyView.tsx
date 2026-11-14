@@ -15,7 +15,11 @@ import {
   Volume2,
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
-import { auditRegimenApi, quickCheckApi } from '../services/api';
+import {
+  auditRegimenApi,
+  isLiveGeminiModel,
+  quickCheckApi,
+} from '../services/api';
 import {
   playCalmReadout,
   stopCalmAudio,
@@ -215,10 +219,35 @@ export const AskSafetyView: React.FC = () => {
             data-severity={quickResult.severity}
             style={{ marginTop: '1rem', display: 'grid', gap: '0.55rem' }}
           >
-            {renderSeverityHeader(
-              quickResult.severity,
-              quickResult.verdictBadge
-            )}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+              }}
+            >
+              {renderSeverityHeader(
+                quickResult.severity,
+                quickResult.verdictBadge
+              )}
+              {!brainFogMode && (
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: isLiveGeminiModel(quickResult.modelUsed)
+                      ? 'var(--accent)'
+                      : 'var(--text-secondary)',
+                  }}
+                >
+                  {isLiveGeminiModel(quickResult.modelUsed)
+                    ? `✦ Gemini · ${quickResult.modelUsed}`
+                    : 'Offline Fallback'}
+                </span>
+              )}
+            </div>
 
             <div
               style={{

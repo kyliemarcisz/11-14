@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { checkGeminiHealthApi, GeminiHealthStatus } from '../services/api';
 import {
   triggerSoftImpactHaptic,
   triggerSuccessHaptic,
@@ -28,6 +29,17 @@ export const HarborHeader: React.FC = () => {
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [aiStatus, setAiStatus] = useState<GeminiHealthStatus | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    checkGeminiHealthApi().then((s) => {
+      if (mounted) setAiStatus(s);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleLogout = async () => {
     triggerWarningHaptic();
@@ -96,8 +108,49 @@ export const HarborHeader: React.FC = () => {
           />
         </Pressable>
 
-        {/* Right: ? Quick Guide + Aa Large Toggle */}
+        {/* Right: Gemini Live Pill + ? Quick Guide + Aa Large Toggle */}
         <View style={styles.rightRow}>
+          {!brainFogMode && aiStatus && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                paddingHorizontal: 9,
+                paddingVertical: 4,
+                borderRadius: 999,
+                borderWidth: 1,
+                backgroundColor: aiStatus.geminiConfigured
+                  ? theme.colors.safeSoft
+                  : theme.colors.cautionSoft,
+                borderColor: aiStatus.geminiConfigured
+                  ? theme.colors.safeBorder
+                  : theme.colors.cautionBorder,
+              }}
+            >
+              <View
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  backgroundColor: aiStatus.geminiConfigured
+                    ? theme.colors.safe
+                    : theme.colors.caution,
+                }}
+              />
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: aiStatus.geminiConfigured
+                    ? theme.colors.safe
+                    : theme.colors.caution,
+                }}
+              >
+                {aiStatus.geminiConfigured ? 'Gemini Live' : 'Offline'}
+              </Text>
+            </View>
+          )}
           <Pressable
             onPress={() => {
               triggerSoftImpactHaptic();

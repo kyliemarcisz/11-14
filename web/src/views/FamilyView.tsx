@@ -8,6 +8,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PillIllustration } from '../components/PillIllustration';
 import { familyUpdateApi } from '../services/api';
 import { triggerGentleFeedback } from '../services/audioService';
@@ -375,55 +376,58 @@ export const FamilyView: React.FC = () => {
       </div>
 
       {/* Add Person Modal */}
-      {newProfileModalOpen && (
-        <div
-          className="modal-backdrop"
-          onClick={() => setNewProfileModalOpen(false)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <form
-            className="modal-card"
-            onClick={(e) => e.stopPropagation()}
-            onSubmit={handleCreateProfile}
+      {newProfileModalOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="modal-backdrop"
+            onClick={() => setNewProfileModalOpen(false)}
+            role="dialog"
+            aria-modal="true"
           >
-            <h3 className="page-title" style={{ fontSize: '1.4rem' }}>
-              Add Person
-            </h3>
-            <div
-              style={{
-                display: 'grid',
-                gap: '0.75rem',
-                marginTop: '0.95rem',
-              }}
+            <form
+              className="modal-card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={handleCreateProfile}
             >
-              <input
-                type="text"
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Name (e.g., Dad or Elena)"
-                className="harbor-input"
-              />
-              <input
-                type="text"
-                value={newRelation}
-                onChange={(e) => setNewRelation(e.target.value)}
-                placeholder="Note (e.g., Family Schedule)"
-                className="harbor-input"
-              />
-            </div>
+              <h3 className="page-title" style={{ fontSize: '1.4rem' }}>
+                Add Person
+              </h3>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '0.75rem',
+                  marginTop: '0.95rem',
+                }}
+              >
+                <input
+                  type="text"
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Name (e.g., Dad or Elena)"
+                  className="harbor-input"
+                />
+                <input
+                  type="text"
+                  value={newRelation}
+                  onChange={(e) => setNewRelation(e.target.value)}
+                  placeholder="Note (e.g., Family Schedule)"
+                  className="harbor-input"
+                />
+              </div>
 
-            <button
-              type="submit"
-              className="btn-primary"
-              style={{ marginTop: '1.1rem' }}
-            >
-              Save Person
-            </button>
-          </form>
-        </div>
-      )}
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{ marginTop: '1.1rem' }}
+              >
+                Save Person
+              </button>
+            </form>
+          </div>,
+          document.body
+        )}
     </section>
   );
 };
