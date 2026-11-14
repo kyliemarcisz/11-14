@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "HarborDose",
+    "slug": "harbordose",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "harbordose",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F8F6F2"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "HarborDose uses your camera to gently scan prescription bottles and discharge instructions.",
+        "NSPhotoLibraryUsageDescription": "HarborDose lets you select prescription bottle or discharge photos from your library."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#F8F6F2"
+      },
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow HarborDose to scan your prescription bottles and discharge papers."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow HarborDose to read prescription photos from your photo library."
+        }
+      ],
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

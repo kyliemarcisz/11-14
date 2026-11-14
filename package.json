@@ -1,0 +1,16 @@
+{
+  "name": "harbordose-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HarborDose — ADHD-first visual prescription tracker & safety companion powered by Google Gemini (gemini-4-hydrogen)",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix mobile install",
+    "server": "npm --prefix server run dev",
+    "server:build": "npm --prefix server run build",
+    "mobile": "npm --prefix mobile run start",
+    "ios": "npm --prefix mobile run ios",
+    "android": "npm --prefix mobile run android",
+    "web": "npm --prefix mobile run web",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix mobile run typecheck"
+  }
+}
